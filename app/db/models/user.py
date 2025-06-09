@@ -1,6 +1,6 @@
 from sqlalchemy import Column, String, DateTime, Text, ForeignKey, Boolean, Date
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from db.database import Base
 from sqlalchemy.orm import relationship
 
@@ -40,7 +40,7 @@ class User(Base):
     # 보호자 여부
     is_guardian = Column(Boolean, default=False)
     # 계정 생성일자
-    created_at = Column(DateTime, default=datetime.utcnow) # 자동생성 부여
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone(timedelta(hours=9))))
     # Family ↔ User
     family = relationship("Family", back_populates="users")
     

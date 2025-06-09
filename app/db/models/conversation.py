@@ -1,6 +1,6 @@
 from sqlalchemy import Column, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from db.database import Base
 from sqlalchemy.orm import relationship
 
@@ -22,8 +22,8 @@ class Conversation(Base):
     id = Column(UUID(as_uuid=True), primary_key=True)
     # 관계 사진 id
     photo_id = Column(UUID(as_uuid=True), ForeignKey('photos.id'))
-    # 실행 일자
-    created_at = Column(DateTime, default=datetime.utcnow)
+    # 대화 생성 일자
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone(timedelta(hours=9))))
     # Photo ↔ Conversation 
     photo = relationship("Photo", back_populates="conversations")
     # Conversation ↔ Turn

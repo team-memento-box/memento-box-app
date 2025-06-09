@@ -3,7 +3,7 @@ from sqlalchemy.dialects.postgresql import UUID, JSON
 from db.database import Base
 from sqlalchemy.orm import relationship
 from uuid import uuid4
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 class Photo(Base):
     """
@@ -34,7 +34,7 @@ class Photo(Base):
     # 관계 가족 id
     family_id = Column(UUID(as_uuid=True), ForeignKey('families.id'))
     # 업로드 일자
-    uploaded_at = Column(DateTime, default=datetime.utcnow)  # 자동생성 부여
+    uploaded_at = Column(DateTime, default=lambda: datetime.now(timezone(timedelta(hours=9))))
     # Family ↔ Photo 
     family = relationship("Family", back_populates="photos")
     # Photo ↔ Conversation 

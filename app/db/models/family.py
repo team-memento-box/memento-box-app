@@ -1,6 +1,6 @@
 from sqlalchemy import Column, String, DateTime
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from db.database import Base
 from sqlalchemy.orm import relationship
 from uuid import uuid4
@@ -22,7 +22,7 @@ class Family(Base):
     # 가족 이름
     name = Column(String(40), nullable=True)
     # 가족 생성 일자
-    created_at = Column(DateTime, default=datetime.utcnow)  # 자동생성 부여
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone(timedelta(hours=9))))
     # Family ↔ Photo 
     photos = relationship("Photo", back_populates="family", cascade="all, delete-orphan")
     # Family ↔ User 
