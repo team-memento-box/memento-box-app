@@ -1,15 +1,15 @@
 from sqlalchemy import Column, String, ForeignKey, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSON
 from db.database import Base
 from sqlalchemy.orm import relationship
 
-class AnomaliesReport(Base):
+class AnomalyReport(Base):
     
     """
-    anomalies_reports 테이블 모델
+    anomaly_reports 테이블 모델
 
     """
-    __tablename__ = 'anomalies_reports'
+    __tablename__ = 'anomaly_reports'
     __table_args__ = {
         #"schema": "", # 파일명
         #"mysql_engine": "InnoDB",
@@ -20,9 +20,9 @@ class AnomaliesReport(Base):
     id = Column(UUID(as_uuid=True), primary_key=True)
     # 관계 대화 회기 id
     conv_id = Column(UUID(as_uuid=True), ForeignKey('conversations.id'))
-    # 이상대화 내용
-    event_report = Column(Text, nullable=True)
+    # 이상대화 리포트
+    anomaly_report = Column(Text, nullable=True)
     # 이상대화 구간
-    event_interval = Column(String, nullable=True)
-    # Conversation ↔ AnomaliesReport
-    conv_report = relationship("Conversation", back_populates="report")
+    anomaly_turn = Column(JSON, nullable=True)
+    # Conversation ↔ AnomalyReport
+    conversation = relationship("Conversation", back_populates="anomaly_report")
