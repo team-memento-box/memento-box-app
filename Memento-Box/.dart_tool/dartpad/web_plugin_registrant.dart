@@ -6,6 +6,7 @@
 // @dart = 2.13
 // ignore_for_file: type=lint
 
+import 'package:app_links_web/app_links_web.dart';
 import 'package:flutter_web_auth_2/src/flutter_web_auth_2_web.dart';
 import 'package:kakao_flutter_sdk_common/src/web/kakao_flutter_sdk_plugin.dart';
 import 'package:shared_preferences_web/shared_preferences_web.dart';
@@ -15,6 +16,7 @@ import 'package:flutter_web_plugins/flutter_web_plugins.dart';
 
 void registerPlugins([final Registrar? pluginRegistrar]) {
   final Registrar registrar = pluginRegistrar ?? webPluginRegistrar;
+  AppLinksPluginWeb.registerWith(registrar);
   FlutterWebAuth2WebPlugin.registerWith(registrar);
   KakaoFlutterSdkPlugin.registerWith(registrar);
   SharedPreferencesPlugin.registerWith(registrar);

@@ -30,12 +30,13 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  supabase_flutter: ^2.3.4       # 🗄️ Supabase 클라이언트 (DB, Auth, Storage)
   kakao_flutter_sdk_user: ^1.4.2
   url_launcher: ^6.3.1           # 🌐 외부 URL (예: 카카오 로그인 페이지) 브라우저에서 열기
   uni_links: ^0.5.1              # 🔗 앱이 딥링크/리디렉션 URL을 감지하고 추출할 수 있게 해주는 패키지 (예: myapp://oauth 또는 http://도 가능)
   flutter_dotenv: ^5.2.1         # 📄 .env 파일에서 환경 변수 (client_id, redirect_uri 등)를 불러오기
   flutter_web_auth_2: ^2.0.3     # 🔐 외부 인증 서비스(OAuth 등)를 웹 브라우저를 통해 실행 후 결과를 앱으로 다시 전달받는 기능 지원
-  http: ^0.13.6                  # 📡 백엔드와의 HTTP 통신 (GET/POST 등) 처리
+  http: ^0.13.6                  # 📡 AI API 호출용 HTTP 통신
   provider: ^6.1.1               # 🏷️ 상태 관리 패턴을 위한 Provider 패키지
 
   # The following adds the Cupertino Icons font to your application.

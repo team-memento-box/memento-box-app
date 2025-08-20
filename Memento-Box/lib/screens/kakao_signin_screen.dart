@@ -1,29 +1,56 @@
 import 'package:flutter/material.dart';
-import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/supabase_service.dart';
 
 class KakaoSigninScreen extends StatelessWidget {
   const KakaoSigninScreen({super.key});
 
-  Future<void> _kakaoLoginAndSendToBackend(BuildContext context) async {
+  Future<void> _kakaoLoginWithSupabase(BuildContext context) async {
     try {
-      OAuthToken token = await UserApi.instance.loginWithKakaoAccount();
-      final baseUrl = dotenv.env['BASE_URL']!;
-      final response = await http.post(
-        Uri.parse('$baseUrl/kakao_login'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'access_token': token.accessToken}),
+      // Supabase에서 직접 카카오 OAuth 처리
+      final response = await SupabaseService.client.auth.signInWithOAuth(
+        OAuthProvider.kakao,
+        redirectTo: 'memento://callback', // 앱 딥링크
       );
 
-      if (response.statusCode == 200) {
-        final userInfo = jsonDecode(response.body);
-        Navigator.pushNamed(context, '/intro', arguments: userInfo);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('서버 오류: ${response.body}')),
-        );
+      if (response) {
+        // 로그인 성공 시 사용자 정보 가져오기
+        final user = SupabaseService.client.auth.currentUser;
+        if (user != null) {
+          // users 테이블에서 사용자 프로필 확인
+          final profile = await SupabaseService.client
+              .from('users')
+              .select()
+              .eq('id', user.id)
+              .maybeSingle();
+
+          if (profile == null) {
+            // 신규 사용자 - 기본 프로필 생성
+            await SupabaseService.client.from('users').insert({
+              'id': user.id,
+              'email': user.email,
+              'full_name': user.userMetadata?['name'] ?? '',
+              'profile_image_url': user.userMetadata?['avatar_url'] ?? '',
+              'onboarding_completed': false,
+              'privacy_consent': false,
+              'terms_accepted': false,
+              'notification_enabled': true,
+            });
+            
+            Navigator.pushNamed(context, '/intro', arguments: {
+              'user_id': user.id,
+              'email': user.email,
+              'is_registered': false,
+            });
+          } else {
+            // 기존 사용자
+            Navigator.pushNamed(context, '/intro', arguments: {
+              'user_id': profile['id'],
+              'email': profile['email'],
+              'is_registered': profile['onboarding_completed'] ?? false,
+            });
+          }
+        }
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -71,7 +98,7 @@ class KakaoSigninScreen extends StatelessWidget {
             '카카오로 계속하기',
             const Color(0xFFF9E007),
             Colors.black,
-            onTap: () => _kakaoLoginAndSendToBackend(context),
+            onTap: () => _kakaoLoginWithSupabase(context),
           ),
         ],
       ),

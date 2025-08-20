@@ -1,37 +1,69 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart'; // ✅ Provider import
-import '../user_provider.dart'; // ✅ 사용자 Provider import
+import 'package:provider/provider.dart';
+import '../user_provider.dart';
 import '../widgets/tap_widget.dart';
-class IntroScreen extends StatefulWidget { // ✅ StatefulWidget으로 변경
+import '../core/supabase_service.dart';
+
+class IntroScreen extends StatefulWidget {
   const IntroScreen({super.key});
 
   @override
-  State<IntroScreen> createState() => _IntroScreenState(); // ✅ 상태 생성자 연결
+  State<IntroScreen> createState() => _IntroScreenState();
 }
 
 class _IntroScreenState extends State<IntroScreen> {
   @override
   void initState() {
-  super.initState();
+    super.initState();
 
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    final uri = Uri.base;
-    final fragment = uri.fragment; // 👉 "#/intro?kakao_id=428..."
-    final queryString = fragment.contains('?') ? fragment.split('?')[1] : '';
-    final fakeUri = Uri.parse('http://fake.com/?$queryString'); // ✅ 정상 쿼리 파싱 가능
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // 카카오 로그인에서 전달받은 arguments 사용
+      final arguments = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+      
+      if (arguments != null) {
+        final userId = arguments['user_id'] as String?;
+        final email = arguments['email'] as String?;
+        final isRegistered = arguments['is_registered'] as bool? ?? false;
+        
+        // Supabase에서 사용자 프로필 정보 가져오기
+        _loadUserProfile(userId, email, isRegistered);
+      }
+    });
+  }
 
-    // ✅ 로그 확인
-    print("🎯 kakao_id: ${fakeUri.queryParameters['kakao_id']}");
-
-    Provider.of<UserProvider>(context, listen: false).setUser(
-      kakaoId: fakeUri.queryParameters['kakao_id'] ?? '',
-      username: fakeUri.queryParameters['username'] ?? '',
-      email: fakeUri.queryParameters['email'] ?? '',
-      profileImg: fakeUri.queryParameters['profile_img'] ?? '',
-      gender: fakeUri.queryParameters['gender'] ?? '',
-    );
-  });
-}
+  Future<void> _loadUserProfile(String? userId, String? email, bool isRegistered) async {
+    if (userId == null) return;
+    
+    try {
+      if (isRegistered) {
+        // 기존 사용자 - 프로필 정보 가져오기
+        final profile = await SupabaseService.client
+            .from('users')
+            .select()
+            .eq('id', userId)
+            .single();
+            
+        Provider.of<UserProvider>(context, listen: false).setUser(
+          kakaoId: userId,
+          username: profile['full_name'] ?? '',
+          email: profile['email'] ?? '',
+          profileImg: profile['profile_image_url'] ?? '',
+          gender: profile['gender'] ?? '',
+        );
+      } else {
+        // 신규 사용자 - 기본 정보만 설정
+        Provider.of<UserProvider>(context, listen: false).setUser(
+          kakaoId: userId,
+          username: '',
+          email: email ?? '',
+          profileImg: '',
+          gender: '',
+        );
+      }
+    } catch (e) {
+      print('프로필 로드 오류: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

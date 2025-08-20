@@ -1,14 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from routers import auth  # 현재 Supabase로 마이그레이션된 라우터만 import
-# from routers import family, photo, speech, conversation, report, chat, fish  # 추후 마이그레이션 예정
-
-#, photo
-#from routers import turn,  photo,conversation
+# from routers import chat, conversation  # AI 전용 라우터들
 
 load_dotenv()
-app = FastAPI()
+app = FastAPI(title="Memento Box AI API", description="AI 전용 API - 채팅, 이미지 분석, 음성 합성")
 
 # CORS 설정
 app.add_middleware(
@@ -19,8 +15,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 라우터 등록
-app.include_router(auth.router) # 인증관리
+# AI 전용 라우터 등록 (추후 활성화)
+# app.include_router(chat.router, prefix="/ai", tags=["chat"])
+# app.include_router(conversation.router, prefix="/ai", tags=["conversation"])
 # app.include_router(chat.router, prefix="/api", tags=["llm"])
 # app.include_router(family.router) # 가족 관리
 # app.include_router(photo.router)

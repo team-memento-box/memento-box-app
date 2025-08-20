@@ -10,11 +10,14 @@ import 'screens/add_photo_screen.dart';
 import 'screens/conversation_screen.dart'; // ✅ 새ka로 만든 대화 스크린 import
 import 'screens/intro_screen.dart'; // ✅ 새로 만든 인트로 스크린 import
 import 'package:flutter_dotenv/flutter_dotenv.dart'; // --홍원 추가--
+import 'core/supabase_service.dart'; // Supabase 서비스
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // ✅ .env 파일 로드 (.env 파일은 Memento-Box 폴더에 위치)
   await dotenv.load(fileName: ".env");
+  // ✅ Supabase 초기화
+  await SupabaseService.initialize();
 
   //runApp(const MyCustomApp());
   runApp(
