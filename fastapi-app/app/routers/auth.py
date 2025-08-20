@@ -1,198 +1,201 @@
 from fastapi import APIRouter, Request, Body, Depends, HTTPException, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 import requests
-from db.database import async_session, get_db
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from db.models.user import User
-from sqlalchemy.exc import IntegrityError
-from db.models.family import Family
-from uuid import uuid4
-from datetime import datetime, timedelta
-import random, string
-from core.auth import (
-    get_password_hash,
-    verify_password,
-    create_access_token,
-    ACCESS_TOKEN_EXPIRE_MINUTES
-)
-from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
-import os
+from core.config import supabase, settings
+from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-@router.post("/kakao_login")
-async def kakao_login(request: Request):
+@router.get("/kakao/login")
+async def kakao_login():
+    """카카오 OAuth 로그인 URL 생성"""
+    try:
+        response = supabase.auth.sign_in_with_oauth({
+            "provider": "kakao",
+            "options": {
+                "redirect_to": f"{settings.SERVER_HOST}/auth/kakao/callback"
+            }
+        })
+        return {"login_url": response.url}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"OAuth URL 생성 실패: {str(e)}")
+
+@router.get("/kakao/callback")
+async def kakao_callback(code: str = None, error: str = None):
+    """카카오 OAuth 콜백 처리"""
+    if error:
+        raise HTTPException(status_code=400, detail=f"OAuth 에러: {error}")
+    
+    if not code:
+        raise HTTPException(status_code=400, detail="인증 코드가 없습니다")
+    
+    try:
+        # Supabase에서 OAuth 세션 가져오기
+        response = supabase.auth.exchange_code_for_session({
+            "auth_code": code
+        })
+        
+        if response.user:
+            # users 테이블에서 사용자 정보 조회/생성
+            profile_data = supabase.table("users").select("*").eq("id", response.user.id).execute()
+            
+            if len(profile_data.data) == 0:
+                # 새 사용자 - users 테이블에 기본 정보 추가
+                new_profile = {
+                    "id": response.user.id,
+                    "email": response.user.email,
+                    "full_name": response.user.user_metadata.get("name", ""),
+                    "profile_image_url": response.user.user_metadata.get("avatar_url", ""),
+                    "onboarding_completed": False,
+                    "privacy_consent": False,
+                    "terms_accepted": False,
+                    "notification_enabled": True
+                }
+                supabase.table("users").insert(new_profile).execute()
+                
+                return JSONResponse(content={
+                    "user_id": response.user.id,
+                    "email": response.user.email,
+                    "full_name": new_profile["full_name"],
+                    "profile_image_url": new_profile["profile_image_url"],
+                    "is_registered": False,
+                    "access_token": response.session.access_token
+                })
+            else:
+                # 기존 사용자
+                profile = profile_data.data[0]
+                return JSONResponse(content={
+                    "user_id": profile["id"],
+                    "email": profile["email"],
+                    "full_name": profile["full_name"],
+                    "birth_date": profile["birth_date"],
+                    "gender": profile["gender"],
+                    "phone": profile["phone"],
+                    "profile_image_url": profile["profile_image_url"],
+                    "onboarding_completed": profile["onboarding_completed"],
+                    "is_registered": profile["onboarding_completed"],
+                    "access_token": response.session.access_token
+                })
+        else:
+            raise HTTPException(status_code=400, detail="사용자 정보를 가져올 수 없습니다")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"인증 처리 중 오류: {str(e)}")
+
+@router.post("/login")
+async def login(request: Request):
+    """토큰을 사용한 로그인 검증"""
     data = await request.json()
     access_token = data.get("access_token")
-    if not access_token:
-        return JSONResponse({"error": "No access token"}, status_code=400)
-
-    user_url = "https://kapi.kakao.com/v2/user/me"
-    headers = {"Authorization": f"Bearer {access_token}"}
-    user_res = requests.get(user_url, headers=headers)
-    user_info = user_res.json()
     
-    kakao_id = str(user_info["id"])
-    name = user_info["kakao_account"].get("name", "")
-    profile_img = user_info["kakao_account"]["profile"].get("profile_image_url", "")
-    gender = user_info["kakao_account"].get("gender", "")
-    birthday = user_info["kakao_account"].get("birthday", "")
-    email = user_info["kakao_account"].get("email", "")
-    phone = user_info["kakao_account"].get("phone_number", "")
-
-    async with async_session() as session:
-        result = await session.execute(select(User).where(User.kakao_id == kakao_id))
-        existing_user = result.scalar_one_or_none()
+    if not access_token:
+        raise HTTPException(status_code=400, detail="액세스 토큰이 필요합니다")
+    
+    try:
+        # Supabase에서 토큰 검증
+        response = supabase.auth.get_user(access_token)
         
-        family_code = None
-        family_name = None
-        if existing_user and existing_user.family_id:
-            family = await session.get(Family, existing_user.family_id)
-            if family:
-                family_code = family.code
-                family_name = family.name
-        
-        if existing_user:
-            return JSONResponse(
-                content={
-                    "kakao_id": existing_user.kakao_id,
-                    "name": existing_user.name, # name
-                    "profile_img": existing_user.profile_img,
-                    "gender": existing_user.gender,
-                    "birthday": existing_user.birthday,
-                    "email": existing_user.email,
-                    "phone": existing_user.phone,
-                    "family_id": str(existing_user.family_id) if existing_user.family_id else None,
-                    "family_code": family_code,   
-                    "family_name": family_name,
-                    "family_role": existing_user.family_role,
-                    "created_at": existing_user.created_at.isoformat() if existing_user.created_at else None,
-                    "is_guardian": bool(existing_user.is_guardian) if existing_user.is_guardian is not None else None,
-                    "is_registered": True
-                },
-                media_type="application/json; charset=utf-8"
-            )
+        if response.user:
+            # users 테이블에서 사용자 정보 조회
+            profile_data = supabase.table("users").select("*").eq("id", response.user.id).execute()
+            
+            if len(profile_data.data) > 0:
+                profile = profile_data.data[0]
+                return JSONResponse(content={
+                    "user_id": profile["id"],
+                    "email": profile["email"],
+                    "full_name": profile["full_name"],
+                    "birth_date": profile["birth_date"],
+                    "gender": profile["gender"],
+                    "phone": profile["phone"],
+                    "profile_image_url": profile["profile_image_url"],
+                    "onboarding_completed": profile["onboarding_completed"],
+                    "is_registered": profile["onboarding_completed"]
+                })
+            else:
+                raise HTTPException(status_code=404, detail="사용자 프로필을 찾을 수 없습니다")
         else:
-            return JSONResponse(
-                content={
-                    "kakao_id": kakao_id,
-                    "name": name,
-                    "profile_img": profile_img,
-                    "gender": gender,
-                    "birthday": birthday,
-                    "email": email,
-                    "phone": phone,
-                    "is_registered": False
-                },
-                media_type="application/json; charset=utf-8"
-            )
+            raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"토큰 검증 중 오류: {str(e)}")
 
 @router.post("/register_user")
 async def register_user(user_data: dict = Body(...)):
-    kakao_id = user_data.get("kakao_id")
-    if not kakao_id:
-        return JSONResponse({"error": "No kakao_id provided"}, status_code=400)
-    async with async_session() as session:
-        result = await session.execute(select(User).where(User.kakao_id == kakao_id))
-        user = result.scalar_one_or_none()
-        family_id = user_data.get("family_id")
-        family_code = user_data.get("family_code")
-        family_name = user_data.get("family_name")
-
-        # 1. user 테이블에는 family_id만 저장
-        if user:
-            user.name = user_data.get("name", user.name)
-            user.profile_img = user_data.get("profile_img", user.profile_img)
-            user.gender = user_data.get("gender", user.gender)
-            user.birthday = user_data.get("birthday", user.birthday)
-            user.email = user_data.get("email", user.email)
-            user.phone = user_data.get("phone", user.phone)
-            user.family_id = family_id or user.family_id
-            user.family_role = user_data.get("family_role", user.family_role)
-            user.created_at = user_data.get("created_at", user.created_at)
-            user.is_guardian = user_data.get("is_guardian", user.is_guardian)
+    """사용자 프로필 정보 업데이트 (온보딩 완료)"""
+    user_id = user_data.get("user_id")
+    if not user_id:
+        return JSONResponse({"error": "user_id가 필요합니다"}, status_code=400)
+    
+    try:
+        # users 테이블에서 사용자 조회
+        profile_data = supabase.table("users").select("*").eq("id", user_id).execute()
+        
+        if len(profile_data.data) == 0:
+            return JSONResponse({"error": "사용자를 찾을 수 없습니다"}, status_code=404)
+        
+        # 프로필 정보 업데이트
+        update_data = {
+            "full_name": user_data.get("full_name"),
+            "birth_date": user_data.get("birth_date"),
+            "gender": user_data.get("gender"),
+            "phone": user_data.get("phone"),
+            "profile_image_url": user_data.get("profile_image_url"),
+            "onboarding_completed": True,
+            "privacy_consent": user_data.get("privacy_consent", True),
+            "terms_accepted": user_data.get("terms_accepted", True),
+            "notification_enabled": user_data.get("notification_enabled", True),
+            "updated_at": datetime.now().isoformat()
+        }
+        
+        # None 값 제거
+        update_data = {k: v for k, v in update_data.items() if v is not None}
+        
+        result = supabase.table("users").update(update_data).eq("id", user_id).execute()
+        
+        if len(result.data) > 0:
+            return JSONResponse({"message": "사용자 정보가 저장되었습니다"})
         else:
-            new_user = User(
-                kakao_id=user_data.get("kakao_id"),
-                name=user_data.get("name"),
-                profile_img=user_data.get("profile_img"),
-                gender=user_data.get("gender"),
-                birthday=user_data.get("birthday"),
-                email=user_data.get("email"),
-                phone=user_data.get("phone"),
-                family_id=family_id,
-                family_role=user_data.get("family_role"),
-                created_at=user_data.get("created_at"),
-                is_guardian=user_data.get("is_guardian"),
-                password=get_password_hash("test1234")
-            )
-            session.add(new_user)
+            return JSONResponse({"error": "사용자 정보 업데이트에 실패했습니다"}, status_code=500)
+            
+    except Exception as e:
+        return JSONResponse({"error": f"서버 오류: {str(e)}"}, status_code=500)
 
-        # 2. family_code, family_name이 있으면 family 테이블에 업데이트
-        if family_id and (family_code or family_name):
-            family = await session.get(Family, family_id)
-            if family:
-                if family_code:
-                    family.code = family_code
-                if family_name:
-                    family.name = family_name
+@router.delete("/delete_user/{user_id}")
+async def delete_user(user_id: str):
+    """사용자 계정 삭제"""
+    try:
+        # users 테이블에서 사용자 삭제
+        result = supabase.table("users").delete().eq("id", user_id).execute()
+        
+        if len(result.data) > 0:
+            # Supabase Auth에서도 사용자 삭제 (관리자 권한 필요)
+            # 실제로는 사용자가 직접 계정 삭제하는 것이 권장됨
+            return {"message": f"사용자 {user_id}가 삭제되었습니다."}
+        else:
+            raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"삭제 중 오류: {str(e)}")
 
-        try:
-            await session.commit()
-        except IntegrityError:
-            await session.rollback()
-            return JSONResponse({"error": "DB integrity error"}, status_code=500)
-    return {"message": "User saved"}
-
-@router.post("/token")
-async def login_for_access_token(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    사용자 로그인 및 JWT 토큰 발급
-    """
-    # 카카오 ID로 사용자 조회
-    result = await db.execute(
-        select(User).where(User.kakao_id == form_data.username)
-    )
-    user = result.scalar_one_or_none()
+@router.post("/logout")
+async def logout(request: Request):
+    """로그아웃"""
+    data = await request.json()
+    access_token = data.get("access_token")
     
-    if not user or not verify_password(form_data.password, user.password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="잘못된 로그인 정보입니다",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    if not access_token:
+        raise HTTPException(status_code=400, detail="액세스 토큰이 필요합니다")
     
-    # JWT 토큰 생성
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": str(user.id)},
-        expires_delta=access_token_expires
-    )
-    
-    return {
-        "access_token": access_token,
-        "token_type": "bearer"
-    }
-
-@router.delete("/delete_by_kakao_id/{kakao_id}")
-async def delete_user_by_kakao_id(
-    kakao_id: str,
-):
-    async with async_session() as session:
-        result = await session.execute(select(User).where(User.kakao_id == kakao_id))
-        user = result.scalar_one_or_none()
-        if not user:
-            raise HTTPException(status_code=404, detail="해당 kakao_id의 사용자를 찾을 수 없습니다.")
-        await session.delete(user)
-        await session.commit()
-        return {"message": f"{kakao_id} 사용자가 삭제되었습니다."} 
+    try:
+        # Supabase에서 세션 종료
+        supabase.auth.sign_out()
+        return {"message": "로그아웃되었습니다."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"로그아웃 중 오류: {str(e)}") 
     
 
