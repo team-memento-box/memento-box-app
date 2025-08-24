@@ -99,39 +99,66 @@ class UserService {
     bool? isGuardian,
   }) async {
     try {
-      // 먼저 기존 프로필이 있는지 확인
-      final existing = await SupabaseService.client
-          .from('users')
-          .select()
-          .eq('id', userId)
-          .maybeSingle();
-
-      if (existing != null) {
-        print('✅ 기존 사용자 프로필 존재: $userId');
-        return userId;
+      final user = SupabaseService.client.auth.currentUser;
+      
+      // JWT 토큰이 완전히 설정될 때까지 잠시 대기
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // 현재 인증 상태 확인
+      final currentUser = SupabaseService.client.auth.currentUser;
+      final session = SupabaseService.client.auth.currentSession;
+      print('🔐 Auth check - User ID: ${currentUser?.id}, JWT exists: ${session?.accessToken != null}');
+      
+      if (currentUser == null) {
+        throw Exception('인증된 사용자가 없습니다');
       }
-
-      // 새 사용자 프로필 생성
-      final profileData = {
-        'id': userId,
-        'email': email,
-        'full_name': fullName ?? '',
-        'profile_image_url': profileImageUrl ?? '',
+      
+      // Supabase에서 auth.uid() 값 확인을 위한 디버깅 쿼리
+      try {
+        final authCheck = await SupabaseService.client
+            .rpc('get_current_user_id'); // 이 함수가 없다면 에러가 날 것임
+        print('🔐 Supabase auth.uid(): $authCheck');
+      } catch (e) {
+        print('🔐 auth.uid() 확인 실패 (함수 없음): $e');
+      }
+      
+      // 직접 SQL로 확인 (위험하지만 디버깅용)
+      try {
+        final testAuth = await SupabaseService.client
+            .from('users')
+            .select('id')
+            .limit(1);
+        print('🔐 Users 테이블 읽기 권한 확인: 성공');
+      } catch (e) {
+        print('🔐 Users 테이블 읽기 권한 확인: $e');
+      }
+      
+      // upsert with onConflict 사용 (id가 auth.uid()와 동일해야 함)
+      print('🔄 UPSERT 시도 (onConflict: id)');
+      await SupabaseService.client.from('users').upsert({
+        'id': currentUser.id, // 👈 auth.uid()와 동일해야 함
+        'email': currentUser.email,
+        'full_name': currentUser.userMetadata?['full_name'] ?? fullName ?? '',
+        'profile_image_url': currentUser.userMetadata?['avatar_url'] ?? 
+                            currentUser.userMetadata?['picture'] ?? 
+                            currentUser.userMetadata?['profile_image_url'] ?? 
+                            currentUser.userMetadata?['thumbnail_image_url'] ?? 
+                            profileImageUrl ?? '',
         'onboarding_completed': false,
         'privacy_consent': false,
         'terms_accepted': false,
         'notification_enabled': true,
         'is_guardian': isGuardian ?? true,
-      };
+        'updated_at': DateTime.now().toIso8601String(),
+      }, onConflict: 'id');
+      print('✅ UPSERT 완료');
 
-      await SupabaseService.client
-          .from('users')
-          .insert(profileData);
-
-      print('✅ 새 사용자 프로필 생성: $userId');
+      print('✅ 사용자 프로필 upsert 완료: $userId');
       return userId;
     } catch (e) {
       print('❌ 사용자 프로필 생성/업데이트 오류: $e');
+      print('❌ 오류 타입: ${e.runtimeType}');
+      print('❌ 오류 상세: ${e.toString()}');
       return null;
     }
   }
@@ -139,11 +166,18 @@ class UserService {
   /// 현재 인증된 사용자의 프로필 존재 여부 확인
   static Future<bool> hasUserProfile(String userId) async {
     try {
+      print('🔍 hasUserProfile 체크 시작 - userId: $userId');
+      
       final profile = await SupabaseService.client
           .from('users')
-          .select()
+          .select('id, full_name, email')
           .eq('id', userId)
           .maybeSingle();
+      
+      print('🔍 hasUserProfile 결과: ${profile != null ? "존재함" : "없음"}');
+      if (profile != null) {
+        print('🔍 기존 프로필 정보: ${profile['full_name']} (${profile['email']})');
+      }
       
       return profile != null;
     } catch (e) {
