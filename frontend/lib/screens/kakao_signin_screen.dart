@@ -188,8 +188,8 @@ class _KakaoSigninScreenState extends State<KakaoSigninScreen> with WidgetsBindi
           print('🧭 Existing user navigation: userType=$_userType, isGuardianUser=$isGuardianUser, shouldGoToGuardianFlow=$shouldGoToGuardianFlow, onboardingCompleted=$onboardingCompleted');
           
           if (onboardingCompleted) {
-            print('🧭 Existing user: Direct to intro');
-            Navigator.pushNamed(context, '/intro');
+            print('🧭 Existing user: Direct to home');
+            Navigator.pushNamed(context, '/home');
           } else {
             if (shouldGoToGuardianFlow) {
               print('🧭 Guardian: 0-3-1 -> 0-3-1-1 -> intro');

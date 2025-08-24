@@ -89,7 +89,7 @@ class GroupSelectScreen extends StatelessWidget {
                   child: const Text(
                     '기억여행 시작하기',
                     style: TextStyle(
-                      color: Color(0xFF00C8B8),
+                      color: Color(0xFF8CCAA7),
                       fontSize: 20,
                       fontFamily: 'Pretendard',
                       fontWeight: FontWeight.w600,

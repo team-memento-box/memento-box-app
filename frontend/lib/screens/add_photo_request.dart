@@ -38,18 +38,18 @@ class AddPhotoRequestScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0x1900C8B8),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF00C8B8), width: 3),
+        border: Border.all(color: const Color(0xFF8CCAA7), width: 3),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.heart_broken, color: Color(0xFF00C8B8), size: 48),
+          const Icon(Icons.heart_broken, color: Color(0xFF8CCAA7), size: 48),
           const SizedBox(height: 40),
           const Text(
             '아직 생성된\n보관함이 없어요.\n\n보호자에게 보관함 만들기를\n요청해주세요.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Color(0xFF00C8B8),
+              color: Color(0xFF8CCAA7),
               fontSize: 20,
               fontWeight: FontWeight.w700,
               fontFamily: 'Pretendard',

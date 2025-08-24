@@ -19,7 +19,7 @@ class AssistantBubble extends StatelessWidget {
         children: [
           Image.asset(
             'assets/icons/Robot.png',
-            color: isActive ? Color(0xFF00C8B8) : null,
+            color: isActive ? Color(0xFF8CCAA7) : null,
             colorBlendMode: BlendMode.srcIn,
           ),
           // child: const CircleAvatar(
@@ -34,7 +34,7 @@ class AssistantBubble extends StatelessWidget {
           //   height: 48,
           //   decoration: BoxDecoration(
           //     shape: BoxShape.circle,
-          //     color: isActive ? Color(0xFF00C8B8) : Colors.transparent,
+          //     color: isActive ? Color(0xFF8CCAA7) : Colors.transparent,
           //     border: isActive
           //         ? Border.all(color: Colors.orange, width: 3)
           //         : null,

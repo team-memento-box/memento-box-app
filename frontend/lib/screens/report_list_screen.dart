@@ -172,7 +172,7 @@ class AppConstants {
 
 // 색상 테마
 class AppColors {
-  static const Color primary = Color(0xFF00C8B8);
+  static const Color primary = Color(0xFF8CCAA7);
   static const Color background = Color(0xFFF7F7F7);
   static const Color textPrimary = Color(0xFF333333);
   static const Color textSecondary = Color(0xFF555555);

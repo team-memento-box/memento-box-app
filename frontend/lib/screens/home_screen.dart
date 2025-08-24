@@ -78,7 +78,7 @@ class _HomeUpdateScreenState extends State<HomeUpdateScreen> {
             ),
           ),
           centerTitle: true,
-          backgroundColor: const Color(0xFF00C8B8),
+          backgroundColor: const Color(0xFF8CCAA7),
         ),
       ),
       body: RefreshIndicator(

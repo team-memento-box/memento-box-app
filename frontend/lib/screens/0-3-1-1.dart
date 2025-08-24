@@ -239,7 +239,7 @@ class _GroupCreateScreenState extends State<GroupCreateScreen> {
         print('✅ 온보딩 완료 처리됨');
         
         if (mounted) {
-          Navigator.pushNamed(context, '/intro');
+          Navigator.pushNamed(context, '/home');
         }
         
       } catch (e) {
@@ -327,7 +327,7 @@ class _GroupCreateScreenState extends State<GroupCreateScreen> {
                       child: ElevatedButton(
                         onPressed: _generateCode,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF00C8B8),
+                          backgroundColor: const Color(0xFF8CCAA7),
                           padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -364,7 +364,7 @@ class _GroupCreateScreenState extends State<GroupCreateScreen> {
                     child: ElevatedButton(
                       onPressed: _joinFamily,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF00C8B8),
+                        backgroundColor: const Color(0xFF8CCAA7),
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -420,7 +420,7 @@ class _GroupCreateScreenState extends State<GroupCreateScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF00C8B8) : Colors.transparent,
+          color: isSelected ? const Color(0xFF8CCAA7) : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Text(

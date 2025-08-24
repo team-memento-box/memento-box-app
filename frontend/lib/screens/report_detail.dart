@@ -104,7 +104,7 @@ class ReportDetailScreen extends StatelessWidget {
               width: 50,
               height: 50,
               decoration: const BoxDecoration(
-                color: Color(0xFF00C8B8),
+                color: Color(0xFF8CCAA7),
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
@@ -160,7 +160,7 @@ class ReportDetailScreen extends StatelessWidget {
         alignment: Alignment.centerLeft,
         child: Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF00C8B8),
+            color: const Color(0xFF8CCAA7),
             borderRadius: BorderRadius.circular(3),
           ),
         ),
@@ -175,7 +175,7 @@ class ReportDetailScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFF00C8B8), width: 2),
+        border: Border.all(color: const Color(0xFF8CCAA7), width: 2),
         boxShadow: const [BoxShadow(color: Color(0x19777777), blurRadius: 5)],
       ),
       child: const Text(
@@ -216,7 +216,7 @@ class ReportDetailScreen extends StatelessWidget {
           Navigator.pushNamed(context, '/report');
         },
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF00C8B8),
+          backgroundColor: const Color(0xFF8CCAA7),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
@@ -383,7 +383,7 @@ class CustomBottomNavBar extends StatelessWidget {
               item.icon,
               size: 30,
               color: isSelected
-                  ? const Color(0xFF00C8B8)
+                  ? const Color(0xFF8CCAA7)
                   : const Color(0xFF555555),
             ),
             const SizedBox(height: 4),
@@ -391,7 +391,7 @@ class CustomBottomNavBar extends StatelessWidget {
               item.label,
               style: TextStyle(
                 color: isSelected
-                    ? const Color(0xFF00C8B8)
+                    ? const Color(0xFF8CCAA7)
                     : const Color(0xFF555555),
                 fontSize: 12,
                 fontFamily: 'Pretendard',

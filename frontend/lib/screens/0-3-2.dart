@@ -111,7 +111,7 @@ class _FamilyCodeInputScreenState extends State<FamilyCodeInputScreen> {
       print('✅ 온보딩 완료 처리됨');
 
       if (mounted) {
-        Navigator.pushNamed(context, '/intro');
+        Navigator.pushNamed(context, '/home');
       }
       
     } catch (e) {
@@ -241,7 +241,7 @@ class _FamilyCodeInputScreenState extends State<FamilyCodeInputScreen> {
           height: 60,
           decoration: BoxDecoration(
             color: isCodeEntered
-                ? const Color(0xFF00C8B8)
+                ? const Color(0xFF8CCAA7)
                 : const Color(0xFFDFF3F2),
             borderRadius: BorderRadius.circular(20),
           ),

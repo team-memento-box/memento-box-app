@@ -9,7 +9,7 @@ class GroupBar extends StatelessWidget implements PreferredSizeWidget {
   Widget build(BuildContext context) {
     return AppBar(
       automaticallyImplyLeading: false,
-      backgroundColor: const Color(0xFF00C8B8),
+      backgroundColor: const Color(0xFF8CCAA7),
       elevation: 0,
       toolbarHeight: 80,
       centerTitle: true,
