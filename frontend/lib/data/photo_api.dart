@@ -392,7 +392,7 @@ class PhotoApi {
         
         final photos = await SupabaseService.client
             .from('photos')
-            .select('id, user_id, filename, original_filename, file_path, description, created_at')
+            .select('id, user_id, filename, original_filename, file_path, description, tags, taken_at, created_at')
             .eq('user_id', userId)
             .eq('is_deleted', false)
             .order('created_at', ascending: false)
@@ -441,6 +441,8 @@ class PhotoApi {
             'upload_date': DateTime.parse(photo['created_at']),
             'original_filename': photo['original_filename'],
             'description': photo['description'],
+            'tags': photo['tags'], // tags 필드 추가
+            'taken_at': photo['taken_at'], // taken_at 필드 추가
           });
         }
       }

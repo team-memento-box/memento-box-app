@@ -628,7 +628,7 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
                     _startRecording(); // 대화 계속하기 선택 시 녹음 다시 시작
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00C8B8),
+                    backgroundColor: const Color(0xFF8CCAA7),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
@@ -688,7 +688,7 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
                   },
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(
-                      color: Color(0xFF00C8B8),
+                      color: Color(0xFF8CCAA7),
                       width: 2,
                     ),
                     padding: const EdgeInsets.symmetric(vertical: 12),
@@ -699,7 +699,7 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
                   child: const Text(
                     '대화 끝내기',
                     style: TextStyle(
-                      color: Color(0xFF00C8B8),
+                      color: Color(0xFF8CCAA7),
                       fontSize: 22,
                       fontFamily: 'Pretendard',
                       fontWeight: FontWeight.w800,

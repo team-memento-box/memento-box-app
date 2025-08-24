@@ -74,7 +74,7 @@ class SigninScreen extends StatelessWidget {
                 Navigator.pushNamed(context, '/kakao_signin', arguments: {'userType': 'guardian'});
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00C8B8),
+                backgroundColor: const Color(0xFF8CCAA7),
                 minimumSize: const Size(315, 60),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
@@ -98,7 +98,7 @@ class SigninScreen extends StatelessWidget {
                 Navigator.pushNamed(context, '/kakao_signin', arguments: {'userType': 'dependent'});
               },
               style: OutlinedButton.styleFrom(
-                side: const BorderSide(width: 2, color: Color(0xFF00C8B8)),
+                side: const BorderSide(width: 2, color: Color(0xFF8CCAA7)),
                 minimumSize: const Size(315, 60),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
@@ -110,7 +110,7 @@ class SigninScreen extends StatelessWidget {
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
                   fontFamily: 'Pretendard',
-                  color: Color(0xFF00C8B8),
+                  color: Color(0xFF8CCAA7),
                 ),
               ),
             ),

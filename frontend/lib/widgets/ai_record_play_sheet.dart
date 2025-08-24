@@ -115,7 +115,7 @@ class _SummaryModalState extends State<SummaryModal>
                               setState(() => showTranscript = true);
                             },
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF00C8B8),
+                              backgroundColor: const Color(0xFF8CCAA7),
                               padding: const EdgeInsets.symmetric(vertical: 10),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(20),
@@ -152,7 +152,7 @@ class _SummaryModalState extends State<SummaryModal>
                             },
                             style: OutlinedButton.styleFrom(
                               side: const BorderSide(
-                                color: Color(0xFF00C8B8),
+                                color: Color(0xFF8CCAA7),
                                 width: 2,
                               ),
                               shape: RoundedRectangleBorder(
@@ -165,7 +165,7 @@ class _SummaryModalState extends State<SummaryModal>
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w800,
-                                color: Color(0xFF00C8B8),
+                                color: Color(0xFF8CCAA7),
                               ),
                             ),
                           ),
@@ -182,7 +182,7 @@ class _SummaryModalState extends State<SummaryModal>
                       ),
                       decoration: BoxDecoration(
                         border: Border.all(
-                          color: const Color(0xFF00C8B8),
+                          color: const Color(0xFF8CCAA7),
                           width: 2,
                         ),
                         borderRadius: BorderRadius.circular(10),
@@ -193,7 +193,7 @@ class _SummaryModalState extends State<SummaryModal>
                           const Text(
                             '대화 내용:',
                             style: TextStyle(
-                              color: Color(0xFF00C8B8),
+                              color: Color(0xFF8CCAA7),
                               fontSize: 14,
                               fontFamily: 'Pretendard',
                               fontWeight: FontWeight.w700,

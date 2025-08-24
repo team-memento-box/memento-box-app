@@ -149,12 +149,12 @@ class _IntroScreenState extends State<IntroScreen> {
       decoration: BoxDecoration(
         color: const Color(0x1900C8B8),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF00C8B8), width: 3),
+        border: Border.all(color: const Color(0xFF8CCAA7), width: 3),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.add_circle, color: Color(0xFF00C8B8), size: 36),
+          const Icon(Icons.add_circle, color: Color(0xFF8CCAA7), size: 36),
           const SizedBox(height: 20),
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16),
@@ -162,7 +162,7 @@ class _IntroScreenState extends State<IntroScreen> {
               '우리 가족만의 보관함을\n만들어 주세요',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Color(0xFF00C8B8),
+                color: Color(0xFF8CCAA7),
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
                 fontFamily: 'Pretendard',

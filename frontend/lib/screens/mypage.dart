@@ -457,14 +457,20 @@ class _ActionButton extends StatelessWidget {
         width: 150,
         height: 44,
         decoration: BoxDecoration(
-          color: const Color(0xFFDFF3F2),
+          color: Color.fromARGB(255, 255, 255, 255),
+      
           borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+          color: const Color(0xFF8CCAA7), 
+          width: 2, // 테두리 두께
         ),
+        ),
+          
         child: Center(
           child: Text(
             text,
             style: const TextStyle(
-              color: Color(0xFF00C8B8),
+              color: const Color(0xFF8CCAA7),
               fontSize: 16,
               fontFamily: 'Pretendard',
               fontWeight: FontWeight.w600,

@@ -76,10 +76,10 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
         children: [
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
-              activeTrackColor: const Color(0xFF00C8B8),
+              activeTrackColor: const Color(0xFF8CCAA7),
               inactiveTrackColor: Color(0xFF999999),
               overlayColor: const Color.fromARGB(60, 0, 200, 183),
-              thumbColor: Color(0xFF00C8B8),
+              thumbColor: Color(0xFF8CCAA7),
             ),
             child: Slider(
               value: progress.clamp(0.0, 1.0),
@@ -121,7 +121,7 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
                   'assets/icons/Rewind.png',
                   color: Color(0xFF333333),
                 ),
-                color: _isPressed ? Color(0xFF333333) : Color(0xFF00C8B8),
+                color: _isPressed ? Color(0xFF333333) : Color(0xFF8CCAA7),
                 onPressed: () =>
                     widget.audioService.skipBackward(Duration(seconds: 10)),
               ),
@@ -133,7 +133,7 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
                       : 'assets/icons/Play.png',
                   color: Color(0xFF333333),
                 ),
-                color: _isPressed ? Color(0xFF333333) : Color(0xFF00C8B8),
+                color: _isPressed ? Color(0xFF333333) : Color(0xFF8CCAA7),
                 // onPressed: () {
                 //   _isPlaying
                 //       ? widget.audioService.pause()
@@ -166,7 +166,7 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
                   'assets/icons/Unwind.png',
                   color: Color(0xFF333333),
                 ),
-                color: _isPressed ? Color(0xFF333333) : Color(0xFF00C8B8),
+                color: _isPressed ? Color(0xFF333333) : Color(0xFF8CCAA7),
                 onPressed: () =>
                     widget.audioService.skipForward(Duration(seconds: 10)),
               ),

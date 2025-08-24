@@ -376,11 +376,11 @@ class _AddPhotoScreenState extends State<AddPhotoScreen> {
                   height: 250,
                   decoration: BoxDecoration(
                     border: _selectedImage == null ? Border.all( // _selectedImage가 null일 때만 border 표시
-                      color: const Color(0xFF00C8B8),
+                      color: const Color(0xFF8CCAA7),
                       width: 3,
                     ) : null,
                     borderRadius: BorderRadius.circular(20),
-                    color: _selectedImage == null ? const Color(0x1900C8B8) : null, // _selectedImage가 null일 때만 배경색 표시
+                    color: _selectedImage == null ? const Color.fromARGB(255, 226, 252, 237) : null, // _selectedImage가 null일 때만 배경색 표시
                   ),
                   alignment: Alignment.center,
                   child: GestureDetector(
@@ -393,7 +393,7 @@ class _AddPhotoScreenState extends State<AddPhotoScreen> {
                                 'assets/icons/Add_fill.png',
                                 width: 50,
                                 height: 50,
-                                color: const Color(0xFF00C8B8),
+                                color: const Color(0xFF8CCAA7),
                                 colorBlendMode: BlendMode.srcIn,
                               ),
                               const SizedBox(height: 10),
@@ -402,7 +402,7 @@ class _AddPhotoScreenState extends State<AddPhotoScreen> {
                                 style: TextStyle(
                                   fontSize: 25,
                                   fontWeight: FontWeight.w700,
-                                  color: Color(0xFF00C8B8),
+                                  color: Color(0xFF8CCAA7),
                                 ),
                               ),
                             ],
@@ -468,7 +468,7 @@ class _AddPhotoScreenState extends State<AddPhotoScreen> {
                         : null,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: isAllFilled
-                          ? const Color(0xFF00C8B8)
+                          ? const Color(0xFF8CCAA7)
                           : const Color(0xFFDFF3F2),
                       minimumSize: const Size(double.infinity, 60),
                       shape: RoundedRectangleBorder(

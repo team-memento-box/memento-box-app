@@ -99,7 +99,7 @@ class _OriginalModalState extends State<OriginalModal>
               // Slider(
               //   value: 92,
               //   max: 209,
-              //   activeColor: const Color(0xFF00C8B8),
+              //   activeColor: const Color(0xFF8CCAA7),
               //   onChanged: (_) {},
               // ),
               // Row(
@@ -117,7 +117,7 @@ class _OriginalModalState extends State<OriginalModal>
           //   children: const [
           //     Icon(Icons.skip_previous, size: 32, color: Colors.black),
           //     SizedBox(width: 30),
-          //     Icon(Icons.play_arrow, size: 48, color: Color(0xFF00C8B8)),
+          //     Icon(Icons.play_arrow, size: 48, color: Color(0xFF8CCAA7)),
           //     SizedBox(width: 30),
           //     Icon(Icons.skip_next, size: 32, color: Colors.black),
           //   ],
@@ -137,7 +137,7 @@ class _OriginalModalState extends State<OriginalModal>
                         setState(() => showAllTranscript = true);
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF00C8B8),
+                        backgroundColor: const Color(0xFF8CCAA7),
                         padding: const EdgeInsets.symmetric(vertical: 10),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(20),
@@ -168,7 +168,7 @@ class _OriginalModalState extends State<OriginalModal>
                     ),
                     decoration: BoxDecoration(
                       border: Border.all(
-                        color: const Color(0xFF00C8B8),
+                        color: const Color(0xFF8CCAA7),
                         width: 2,
                       ),
                       borderRadius: BorderRadius.circular(10),
@@ -221,7 +221,7 @@ Widget _chatBubble(String text, {bool isBot = false}) {
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: const Color(0xFF00C8B8),
+                color: const Color(0xFF8CCAA7),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.smart_toy, color: Colors.white, size: 20),
@@ -233,7 +233,7 @@ Widget _chatBubble(String text, {bool isBot = false}) {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             constraints: const BoxConstraints(maxWidth: 280),
             decoration: BoxDecoration(
-              color: isBot ? Colors.grey.shade200 : const Color(0xFF00C8B8),
+              color: isBot ? Colors.grey.shade200 : const Color(0xFF8CCAA7),
               borderRadius: BorderRadius.only(
                 topLeft: const Radius.circular(16),
                 topRight: const Radius.circular(16),

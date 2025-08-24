@@ -51,8 +51,8 @@ class MyCustomApp extends StatelessWidget {
       initialRoute: '/signin', 
       // ✅ [onGenerateRoute] 사용으로 변경
       onGenerateRoute: (settings) {
-        if (settings.name != null && settings.name!.startsWith('/intro')) {
-          return MaterialPageRoute(builder: (context) => const IntroScreen());
+        if (settings.name != null && settings.name!.startsWith('/home')) {
+          return MaterialPageRoute(builder: (context) => const HomeUpdateScreen());
         }
         if (settings.name == '/home') {
           return MaterialPageRoute(builder: (context) => const HomeUpdateScreen());
