@@ -1,0 +1,84 @@
+name: Build and Deploy FastAPI to Azure VM
+
+on:
+  push:
+    branches:
+      - gpu-main-test  # 감지할 브랜치
+    paths:
+      - '**'           # 전체 경로 감지
+  workflow_dispatch:    # 수동 실행 허용
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12.3'
+
+      - name: Install dependencies
+        working-directory: ./app
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build Docker image
+        run: docker build -t fastapi_app:latest ./app
+
+      - name: Create deployment archive (.tar.gz)  # ✅ dialogue 제외
+        run: |
+          tar \
+            --exclude='.env' \
+            --exclude='app/.env' \
+            --exclude='dialogue' \
+            -czf release.tar.gz app fish-speech nginx docker-compose.yml
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fastapi-artifact
+          path: release.tar.gz
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: fastapi-artifact
+
+      - name: Copy archive to Azure VM via SCP
+        run: |
+          echo "${{ secrets.SSH_KEY }}" > private_key
+          chmod 600 private_key
+          scp -i private_key -o StrictHostKeyChecking=no release.tar.gz ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/${{ secrets.SSH_USER }}/release.tar.gz
+
+      - name: SSH and deploy on Azure VM
+        run: |
+          ssh -i private_key -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+            set -e
+            
+            # 컨테이너만 강제 종료 및 삭제 (볼륨 유지)
+            docker rm -f postgres_db fastapi_app nginx_proxy fish-speech || true
+            
+            
+            # 임시 배포 디렉토리 초기화
+            sudo rm -rf ~/fastapi_deploy_temp
+            mkdir -p ~/fastapi_deploy_temp
+            
+            # 압축 해제
+            tar -xzf ~/release.tar.gz -C ~/fastapi_deploy_temp
+
+            # 서버에 고정된 .env 복사
+            cp ~/.env ~/fastapi_deploy_temp/.env
+
+            cd ~/fastapi_deploy_temp
+            docker-compose up -d --build
+          EOF
