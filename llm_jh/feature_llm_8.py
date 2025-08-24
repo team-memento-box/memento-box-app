@@ -1,5 +1,5 @@
 """
-6. Assessment 답변 채점 시스템 추가 (피드백 제거 버전)
+8. 캐싱폴백 구현
 """
 import os   
 import json
@@ -29,20 +29,17 @@ class ConversationState(TypedDict):
     conversation_mode: Literal["assessment", "casual"] 
     ai_response: str                       
     response_type: str                     
-    workflow_stage: str                    
-    retry_count: int                       
-    background_question: str               
-    background_score: float                
-    background_ready: bool                 
+    workflow_stage: str                                 
     # 채점 관련 필드
     is_assessment_answer: bool             # 현재 메시지가 assessment 답변인지
     last_assessment_question: str          # 마지막으로 한 assessment 질문
     last_assessment_task: str              # 마지막 assessment의 task 타입
     assessment_score: float                # 답변 점수 (0-1)
     score_details: Dict[str, Any]          # 상세 채점 결과
-    # 상태 추적 필드
-    last_ai_was_assessment: bool           # 마지막 AI 응답이 assessment 질문이었는지
-    current_assessment_task: str           # 현재 진행 중인 assessment task
+    # 캐시 관련 필드
+    cached_question_found: bool            # 캐시된 질문을 찾았는지
+    cached_question_score: float           # 캐시된 질문의 관련성 점수
+    reused_question: str                   # 재사용된 질문
 
 @dataclass
 class ChatbotConfig:
@@ -50,7 +47,6 @@ class ChatbotConfig:
     assessment_threshold: float = 0.3       
     fallback_threshold: float = 0.6         
     model_name: str = "gpt-4o-mini"
-    max_retries: int = 2                   
 
 ASSESSMENT_TASKS = {
     "registration_recall": {
@@ -108,8 +104,7 @@ API_KEY = os.getenv("GPT_API_KEY")
 config = ChatbotConfig(
     openai_api_key=API_KEY,  
     assessment_threshold=0.3,
-    fallback_threshold=0.6,
-    max_retries=1
+    fallback_threshold=0.6
 )
 
 class LangGraphDementiaChatbot:
@@ -120,14 +115,24 @@ class LangGraphDementiaChatbot:
             openai_api_key=config.openai_api_key,
             temperature=0.3
         )
+        # 경량 대화용 빠른 LLM 초기화
+        self.lightweight_llm = ChatOpenAI(
+            model="gpt-3.5-turbo",
+            openai_api_key=config.openai_api_key,
+            temperature=0.7,
+            max_tokens=150  # 빠른 응답을 위해 토큰 제한
+        )
         self.vectorizer = TfidfVectorizer(stop_words='english')
+        
+        # 질문 캐시 초기화
+        self.question_cache = {}  # {task_name: [(question, context_score, timestamp), ...]}
         
         # 그래프 빌드
         self.graph = self._build_graph()
         print(f"LangGraph 치매 평가 챗봇 초기화 완료 (모델: {config.model_name})")
 
     def _build_graph(self) -> StateGraph:
-        """백그라운드 재시도 + 답변 채점 워크플로우 구성 (피드백 제거)"""
+        """단순화된 워크플로우 구성"""
         workflow = StateGraph(ConversationState)
         
         # 노드들 추가
@@ -136,13 +141,13 @@ class LangGraphDementiaChatbot:
         workflow.add_node("calculate_task_scores", self.calculate_task_scores)
         workflow.add_node("select_best_task", self.select_best_task)
         workflow.add_node("check_assessment_threshold", self.check_assessment_threshold)
+        workflow.add_node("check_cached_questions", self.check_cached_questions)  # 새 노드 추가
         workflow.add_node("generate_questions", self.generate_questions)
         workflow.add_node("calculate_question_similarities", self.calculate_question_similarities)
         workflow.add_node("select_best_question", self.select_best_question)
         workflow.add_node("check_context_relevance", self.check_context_relevance)
         workflow.add_node("output_assessment_question", self.output_assessment_question)
         workflow.add_node("casual_conversation", self.casual_conversation)
-        workflow.add_node("casual_with_background_retry", self.casual_with_background_retry)
         
         # 시작점: 먼저 assessment 답변인지 확인
         workflow.set_entry_point("check_if_assessment_answer")
@@ -157,7 +162,7 @@ class LangGraphDementiaChatbot:
             }
         )
         
-        # 채점 후 바로 기존 플로우로 이어짐 
+        # 채점 후 바로 기존 플로우로 이어짐
         workflow.add_edge("score_assessment_answer", "calculate_task_scores")
         
         # 기본 플로우 
@@ -169,8 +174,18 @@ class LangGraphDementiaChatbot:
             "check_assessment_threshold",
             self._decide_conversation_mode,
             {
-                "assessment": "generate_questions",
+                "assessment": "check_cached_questions",  # 캐시 확인 단계로 변경
                 "casual": "casual_conversation"
+            }
+        )
+        
+        # 캐시된 질문 확인 후 분기
+        workflow.add_conditional_edges(
+            "check_cached_questions",
+            self._decide_cache_usage,
+            {
+                "use_cached": "output_assessment_question",  # 캐시 질문 바로 사용
+                "generate_new": "generate_questions"  # 새 질문 생성
             }
         )
         
@@ -178,12 +193,12 @@ class LangGraphDementiaChatbot:
         workflow.add_edge("calculate_question_similarities", "select_best_question")
         workflow.add_edge("select_best_question", "check_context_relevance")
         
+        # threshold 체크 후 최종 분기 (단순화)
         workflow.add_conditional_edges(
             "check_context_relevance",
             self._decide_final_output,
             {
                 "assessment": "output_assessment_question",
-                "casual_with_retry": "casual_with_background_retry",
                 "casual": "casual_conversation"
             }
         )
@@ -191,40 +206,32 @@ class LangGraphDementiaChatbot:
         # 종료 노드들
         workflow.add_edge("output_assessment_question", END)
         workflow.add_edge("casual_conversation", END)
-        workflow.add_edge("casual_with_background_retry", END)
         
         return workflow.compile()
 
     def check_if_assessment_answer(self, state: ConversationState) -> ConversationState:
-        """상태 기반: 현재 메시지가 assessment 질문에 대한 답변인지 확인"""
+        """상태 기반 Assessment 답변 확인"""
         print("답변 확인: 상태 기반 Assessment 답변 체크...")
         
-        messages = state["messages"]
+        # 상태에서 직접 확인 (빠름)
+        is_assessment_answer = state.get("last_question_type") == "assessment"
+        last_assessment_task = state.get("last_assessment_task", "")
         
-        # 마지막 AI 메시지 찾기
+        # 마지막 AI 메시지도 찾아야 함 (채점에서 사용)
         last_ai_message = ""
+        messages = state["messages"]
         for i in range(len(messages) - 1, -1, -1):
             if isinstance(messages[i], AIMessage):
                 last_ai_message = messages[i].content
                 break
         
-        # 상태에서 이전 상태 확인 (상태 기반 추적)
-        last_ai_was_assessment = state.get("last_ai_was_assessment", False)
-        current_assessment_task = state.get("current_assessment_task", "")
-        
-        # 이전 AI 응답이 assessment 질문이었으면 현재 사용자 메시지는 답변
-        is_assessment_answer = last_ai_was_assessment
-        last_assessment_task = current_assessment_task if is_assessment_answer else ""
-        
         if is_assessment_answer:
             print(f"상태 추적: Assessment 답변 감지! Task: {last_assessment_task}")
-        else:
-            print("상태 추적: Assessment 답변 아님")
         
         return {
             **state,
             "is_assessment_answer": is_assessment_answer,
-            "last_assessment_question": last_ai_message,
+            "last_assessment_question": last_ai_message,  # 채점에서 필요
             "last_assessment_task": last_assessment_task
         }
 
@@ -371,8 +378,6 @@ class LangGraphDementiaChatbot:
             "score_details": score_details
         }
 
-    # === 기존 메서드들 (변경 없음) ===
-    
     def calculate_task_scores(self, state: ConversationState) -> ConversationState:
         message = state["current_message"]
         
@@ -438,14 +443,91 @@ class LangGraphDementiaChatbot:
         
         return {**state, "conversation_mode": mode}
 
+    def check_cached_questions(self, state: ConversationState) -> ConversationState:
+        """캐시된 질문 확인 및 재사용 검토"""
+        print("🔍 캐시된 질문 확인 중...")
+        
+        current_message = state["current_message"]
+        selected_task = state["selected_task"]
+        
+        # 캐시에 해당 태스크의 질문이 있는지 확인
+        if selected_task not in self.question_cache or not self.question_cache[selected_task]:
+            print(f"❌ {selected_task} 태스크의 캐시된 질문 없음")
+            return {
+                **state,
+                "cached_question_found": False,
+                "cached_question_score": 0.0,
+                "reused_question": ""
+            }
+        
+        cached_questions = self.question_cache[selected_task]
+        print(f"📚 {selected_task} 태스크에서 {len(cached_questions)}개 캐시된 질문 발견")
+        
+        # 현재 메시지와 캐시된 질문들의 적합성 재평가
+        best_cached_question = ""
+        best_relevance_score = 0.0
+        
+        for question, original_score, timestamp in cached_questions:
+            # 간단한 키워드 매칭으로 현재 맥락과의 관련성 평가
+            relevance_score = self._evaluate_cached_question_relevance(current_message, question)
+            
+            print(f"  📝 캐시 질문: {question[:50]}... (원래점수: {original_score:.2f}, 현재점수: {relevance_score:.2f})")
+            
+            if relevance_score > best_relevance_score:
+                best_relevance_score = relevance_score
+                best_cached_question = question
+        
+        # 적절한 캐시 질문이 발견되었는지 확인 (임계값: 0.3)
+        cache_threshold = 0.3
+        if best_relevance_score >= cache_threshold:
+            print(f"✅ 재사용할 캐시 질문 발견! (점수: {best_relevance_score:.2f})")
+            print(f"📋 선택된 질문: {best_cached_question}")
+            return {
+                **state,
+                "cached_question_found": True,
+                "cached_question_score": best_relevance_score,
+                "reused_question": best_cached_question,
+                "selected_question": best_cached_question,
+                "question_message_relevance": best_relevance_score
+            }
+        else:
+            print(f"❌ 적합한 캐시 질문 없음 (최고점수: {best_relevance_score:.2f} < 임계값 {cache_threshold})")
+            return {
+                **state,
+                "cached_question_found": False,
+                "cached_question_score": best_relevance_score,
+                "reused_question": ""
+            }
+
+    def _evaluate_cached_question_relevance(self, current_message: str, cached_question: str) -> float:
+        """캐시된 질문과 현재 메시지의 관련성 간단 평가"""
+        try:
+            # 키워드 기반 유사도 계산
+            current_words = set(current_message.lower().split())
+            question_words = set(cached_question.lower().split())
+            
+            # 공통 키워드 비율
+            if len(question_words) == 0:
+                return 0.0
+                
+            common_words = current_words.intersection(question_words)
+            keyword_similarity = len(common_words) / len(question_words)
+            
+            # 길이 유사성 (너무 다르면 관련성 낮음)
+            length_ratio = min(len(current_message), len(cached_question)) / max(len(current_message), len(cached_question))
+            
+            # 최종 점수 (키워드 70% + 길이 30%)
+            final_score = (keyword_similarity * 0.7) + (length_ratio * 0.3)
+            
+            return min(1.0, final_score)
+            
+        except Exception as e:
+            print(f"❌ 캐시 질문 관련성 평가 실패: {e}")
+            return 0.0
+
     def generate_questions(self, state: ConversationState) -> ConversationState:
         """4. 예상 질문 생성"""
-        retry_count = state.get("retry_count", 0)
-        
-        if retry_count > 0:
-            print(f"4단계: 평가 질문 재생성 ({retry_count}번째 시도)...")
-        else:
-            print("4단계: 평가 질문 생성...")
+        print("4단계: 평가 질문 생성...")
             
         messages = state["messages"]
         current_message = state["current_message"]
@@ -574,28 +656,35 @@ class LangGraphDementiaChatbot:
         return {**state, "question_message_relevance": question_message_relevance}
 
     def output_assessment_question(self, state: ConversationState) -> ConversationState:
-        """8. 평가 질문 출력 + 상태 업데이트"""
+        """8. 평가 질문 출력"""
         print("8단계: 평가 질문 출력")
         selected_question = state["selected_question"]
-        selected_task = state["selected_task"]
         
         return {
             **state, 
             "ai_response": selected_question,
             "response_type": "assessment",
-            "workflow_stage": "assessment_question_output",
-            # 상태 추적 업데이트: 이번 AI 응답이 assessment 질문임을 기록
-            "last_ai_was_assessment": True,
-            "current_assessment_task": selected_task
+            "workflow_stage": "assessment_question_output"
         }
 
     def casual_conversation(self, state: ConversationState) -> ConversationState:
-        """일상 대화 처리 + 상태 리셋"""
-        print("일상 대화 모드")
+        """일상 대화 처리 - 캐싱 후엔 경량 시스템 사용"""
         messages = state["messages"]
         current_message = state["current_message"]
         
-        system_msg = """
+        # 워크플로우 단계 확인으로 캐싱 후 상황인지 판단
+        workflow_stage = state.get("workflow_stage", "")
+        
+        # 캐싱 후 casual 대화면 경량 시스템 사용
+        if "cached" in str(state.get("selected_question", "")).lower() or \
+           state.get("question_message_relevance", 1.0) < self.config.fallback_threshold:
+            print("🚀 캐싱 후 경량 대화 모드")
+            ai_response = self.lightweight_chat(current_message, messages)
+            response_type = "casual_lightweight"
+        else:
+            # 일반 casual 대화 (기존 방식)
+            print("일반 casual 대화 모드")
+            system_msg = """
 당신은 7~15세 사이 호기심 많고 예의바른 어린이입니다. 노인 사용자와 사진을 보며 대화하고 있습니다.
 
 대화 예시:
@@ -608,143 +697,113 @@ class LangGraphDementiaChatbot:
 최대한 사용자가 대화를 주도할 수 있도록 사용자에게 공감하며, 자연스럽고 호기심 어린 반응으로 대화를 이어가세요.
 """
 
-        conversation_messages = [SystemMessage(content=system_msg)]
-        conversation_messages.extend(messages)
-        conversation_messages.append(HumanMessage(content=current_message))
-        
-        try:
-            response = self.llm.invoke(conversation_messages)
-            ai_response = response.content.strip()
-            response_type = "casual"
-        except Exception as e:
-            print(f"일상 대화 생성 실패: {e}")
-            ai_response = "응답 생성에 실패했습니다."
-            response_type = "error"
+            conversation_messages = [SystemMessage(content=system_msg)]
+            conversation_messages.extend(messages)
+            conversation_messages.append(HumanMessage(content=current_message))
+            
+            try:
+                response = self.llm.invoke(conversation_messages)
+                ai_response = response.content.strip()
+                response_type = "casual"
+            except Exception as e:
+                print(f"일상 대화 생성 실패: {e}")
+                # 실패 시 경량 시스템으로 폴백
+                ai_response = self.lightweight_chat(current_message, messages)
+                response_type = "casual_fallback"
         
         return {
             **state,
             "ai_response": ai_response,
             "response_type": response_type,
-            "workflow_stage": "casual_chat",
-            # 상태 리셋: casual 응답이므로 assessment 상태 해제
-            "last_ai_was_assessment": False,
-            "current_assessment_task": ""
+            "workflow_stage": "casual_chat"
         }
 
-    def casual_with_background_retry(self, state: ConversationState) -> ConversationState:
-        """즉시 casual 응답 제공 + 백그라운드에서 assessment 재시도"""
-        print("백그라운드 재시도 모드: 즉시 casual 응답 + 백그라운드 assessment 준비")
+    # === 캐싱 시스템 ===
+    
+    def _cache_question(self, task_name: str, question: str, context_score: float):
+        """질문을 캐시에 저장"""
+        timestamp = datetime.now().timestamp()
         
-        messages = state["messages"]
-        current_message = state["current_message"]
-        retry_count = state.get("retry_count", 0)
+        if task_name not in self.question_cache:
+            self.question_cache[task_name] = []
         
-        # 1. 즉시 casual 응답 생성
-        casual_system_msg = """
-당신은 7~15세 사이 호기심 많고 예의바른 어린이입니다. 노인 사용자와 사진을 보며 대화하고 있습니다.
+        # 새 질문 추가
+        self.question_cache[task_name].append((question, context_score, timestamp))
+        
+        # 태스크당 최대 10개까지만 유지 (오래된 것부터 삭제)
+        if len(self.question_cache[task_name]) > 10:
+            self.question_cache[task_name].sort(key=lambda x: x[2])  # timestamp 기준 정렬
+            removed_question = self.question_cache[task_name].pop(0)  # 가장 오래된 것 제거
+            print(f"캐시 크기 초과: 오래된 질문 삭제 - {removed_question[0][:50]}...")
+        
+        print(f"질문 캐시됨 ({task_name}): {question[:50]}... (점수: {context_score:.2f})")
+        print(f"현재 {task_name} 캐시 크기: {len(self.question_cache[task_name])}")
+
+    def get_cache_status(self):
+        """캐시 상태 조회"""
+        if not self.question_cache:
+            return "캐시가 비어있습니다."
+        
+        status = "=== 질문 캐시 상태 ===\n"
+        for task_name, questions in self.question_cache.items():
+            status += f"\n{task_name}: {len(questions)}개 질문\n"
+            for i, (question, score, timestamp) in enumerate(questions, 1):
+                time_str = datetime.fromtimestamp(timestamp).strftime("%H:%M:%S")
+                status += f"  {i}. {question[:60]}... (점수: {score:.2f}, 시간: {time_str})\n"
+        
+        return status
+
+    def lightweight_chat(self, current_message: str, messages: List = None) -> str:
+        """경량 대화 시스템 - 캐싱 후 즉시 빠른 응답"""
+        print("💬 경량 대화 시스템 활성화 (gpt-3.5-turbo)")
+        
+        # 간단한 대화 프롬프트
+        lightweight_prompt = """당신은 7~12세 호기심 많은 어린이입니다. 할머니/할아버지와 자연스럽게 대화하세요.
+
+특징:
+- 짧고 친근한 말투
+- 호기심과 공감 표현
+- 자연스러운 대화 이어가기
+- 50자 이내 간결한 응답
 
 대화 예시:
-사용자: "이 사진 속 강아지가 참 귀엽네"
-손자: "정말요! 털이 복슬복슬해서 만지고 싶어요. 어릴 때 키우신 강아지에요?"
+할머니: "오늘 날씨가 좋네"
+손자: "정말요! 밖에 나가고 싶어져요~"
 
-할머니: "꽃이 예쁘게 피었구나"  
-손자: "진짜요! 향기도 좋을 것 같고요. 꽃 좋아하세요? 저는 좋아해요!"
-
-자연스럽고 호기심 어린 반응으로 대화를 이어가세요.
+할머니: "꽃이 예쁘게 피었구나"
+손자: "우와! 어떤 색깔이에요? 향기도 좋을 것 같아요!"
 """
-        casual_messages = [SystemMessage(content=casual_system_msg)]
-        casual_messages.extend(messages)
-        casual_messages.append(HumanMessage(content=current_message))
         
         try:
-            casual_response = self.llm.invoke(casual_messages)
-            ai_response = casual_response.content.strip()
-            print(f"즉시 제공할 casual 응답: {ai_response}")
+            # 대화 히스토리 구성 (최근 2턴만 사용해서 빠르게)
+            conversation_messages = [SystemMessage(content=lightweight_prompt)]
+            
+            if messages:
+                # 최근 2턴만 사용 (성능 최적화)
+                recent_messages = messages[-2:] if len(messages) >= 2 else messages
+                conversation_messages.extend(recent_messages)
+            
+            conversation_messages.append(HumanMessage(content=current_message))
+            
+            # 빠른 응답 생성
+            response = self.lightweight_llm.invoke(conversation_messages)
+            lightweight_response = response.content.strip()
+            
+            print(f"💬 경량 응답 생성 완료: {lightweight_response}")
+            return lightweight_response
+            
         except Exception as e:
-            print(f"Casual 응답 생성 실패: {e}")
-            ai_response = "그렇군요! 더 얘기해 주세요."
-        
-        # 2. 백그라운드에서 assessment 질문 재시도
-        background_question = ""
-        background_score = 0.0
-        background_ready = False
-        
-        try:
-            print(f"백그라운드에서 {retry_count + 1}번째 assessment 질문 재시도 중...")
-            
-            task_name = state["selected_task"]
-            task_info = ASSESSMENT_TASKS[task_name]
-            
-            # 백그라운드 질문 생성
-            bg_system_msg = f"""당신은 치매 평가 전문가입니다. 
-대화 히스토리를 바탕으로 {task_name} 평가를 위한 자연스러운 질문을 생성해주세요.
-
-평가 영역: {task_name}
-예시 질문들:
-{chr(10).join(task_info["example_questions"])}
-
-{retry_count + 1}번째 시도: 더 자연스럽고 대화 흐름에 맞는 질문을 생성해주세요.
-각 질문을 새 줄로 구분하여 번호 없이 나열해주세요:"""
-
-            bg_messages = [SystemMessage(content=bg_system_msg)]
-            bg_messages.extend(messages)
-            bg_messages.append(HumanMessage(content=current_message))
-            
-            bg_response = self.llm.invoke(bg_messages)
-            bg_questions = [q.strip() for q in bg_response.content.split('\n') if q.strip()]
-            
-            if bg_questions:
-                # 백그라운드 질문 유사도 계산
-                example_questions = task_info["example_questions"]
-                all_questions = bg_questions + example_questions
-                tfidf_matrix = self.vectorizer.fit_transform(all_questions)
-                generated_vectors = tfidf_matrix[:len(bg_questions)]
-                example_vectors = tfidf_matrix[len(bg_questions):]
-                
-                similarity_matrix = cosine_similarity(generated_vectors, example_vectors)
-                max_similarities = np.max(similarity_matrix, axis=1)
-                best_idx = np.argmax(max_similarities)
-                bg_selected_question = bg_questions[best_idx]
-                
-                # 백그라운드 맥락 적합성 평가
-                bg_context_system_msg = f"""대화 히스토리를 보고, 제안된 질문이 자연스러운 대화 흐름인지 평가해주세요.
-
-제안된 질문: "{bg_selected_question}"
-
-이 질문이 대화 맥락에 얼마나 자연스러운지 0-1 사이의 점수로 평가해주세요.
-중요: 반드시 0.0부터 1.0 사이의 숫자만 반환해주세요.
-형식: 0.7"""
-
-                bg_context_messages = [SystemMessage(content=bg_context_system_msg)]
-                bg_context_messages.extend(messages)
-                bg_context_messages.append(HumanMessage(content=current_message))
-                
-                bg_context_response = self.llm.invoke(bg_context_messages)
-                import re
-                numbers = re.findall(r'0\.\d+|1\.0|0\.0|\d\.\d+', bg_context_response.content.strip())
-                if numbers:
-                    background_score = float(numbers[0])
-                    background_score = max(0.0, min(1.0, background_score))
-                    background_question = bg_selected_question
-                    background_ready = True
-                    print(f"백그라운드 질문 준비 완료 (점수: {background_score:.2f}): {background_question}")
-                
-        except Exception as e:
-            print(f"백그라운드 assessment 재시도 실패: {e}")
-        
-        return {
-            **state,
-            "ai_response": ai_response,
-            "response_type": "casual_with_background_retry",
-            "workflow_stage": "casual_with_background_retry",
-            "retry_count": retry_count + 1,
-            "background_question": background_question,
-            "background_score": background_score,
-            "background_ready": background_ready,
-            # 상태 리셋: casual 응답이므로 assessment 상태 해제
-            "last_ai_was_assessment": False,
-            "current_assessment_task": ""
-        }
+            print(f"❌ 경량 대화 생성 실패: {e}")
+            # 폴백 응답들
+            fallback_responses = [
+                "그렇구나! 더 얘기해 주세요~",
+                "정말요? 재미있네요!",
+                "우와! 그런 일이 있었구나!",
+                "그래요? 신기해요!",
+                "맞아요! 저도 그런 것 같아요!"
+            ]
+            import random
+            return random.choice(fallback_responses)
 
     # === 조건부 엣지 결정 함수들 ===
     
@@ -756,26 +815,38 @@ class LangGraphDementiaChatbot:
         """대화 모드 결정"""
         return state["conversation_mode"]
 
+    def _decide_cache_usage(self, state: ConversationState) -> str:
+        """캐시된 질문 사용 여부 결정"""
+        cached_question_found = state.get("cached_question_found", False)
+        
+        if cached_question_found:
+            print("🔄 캐시된 질문 재사용")
+            return "use_cached"
+        else:
+            print("🆕 새로운 질문 생성 필요")
+            return "generate_new"
+
     def _decide_final_output(self, state: ConversationState) -> str:
-        """최종 출력 형태 결정"""
+        """최종 출력 형태 결정 + 캐싱 로직"""
         relevance = state["question_message_relevance"]
         threshold = self.config.fallback_threshold
-        retry_count = state.get("retry_count", 0)
-        max_retries = self.config.max_retries
         
-        # 임계값을 넘으면 즉시 assessment 질문 출력
+        # threshold를 넘으면 assessment 질문 출력
         if relevance >= threshold:
             print(f"평가 질문 출력 (맥락 점수 {relevance:.2f} >= 임계값 {threshold})")
             return "assessment"
-        
-        # 재시도 가능하면 casual 응답하면서 백그라운드에서 재시도
-        if retry_count < max_retries:
-            print(f"즉시 casual 응답 + 백그라운드 재시도 ({retry_count + 1}/{max_retries + 1})")
-            return "casual_with_retry"
-        
-        # 재시도 한계 도달 - assessment 모드 포기, 순수 casual 대화
-        print(f"재시도 한계 도달 - Assessment 모드 포기, Casual 대화로 전환")
-        return "casual"
+        else:
+            # threshold 미만이면 질문을 캐시에 저장하고 casual 대화로 종결
+            print(f"맥락 점수 부족 - casual 대화로 종결 (점수: {relevance:.2f} < 임계값 {threshold})")
+            
+            # 생성된 질문을 캐시에 저장
+            selected_question = state.get("selected_question", "")
+            selected_task = state.get("selected_task", "")
+            
+            if selected_question and selected_task:
+                self._cache_question(selected_task, selected_question, relevance)
+            
+            return "casual"
 
     # === 메인 실행 함수 ===
     
@@ -809,19 +880,16 @@ class LangGraphDementiaChatbot:
             "ai_response": "",
             "response_type": "",
             "workflow_stage": "",
-            "retry_count": 0,
-            "background_question": "",
-            "background_score": 0.0,
-            "background_ready": False,
             # 채점 관련 필드
             "is_assessment_answer": False,
             "last_assessment_question": "",
             "last_assessment_task": "",
             "assessment_score": 0.0,
             "score_details": {},
-            # 상태 추적 필드 초기화
-            "last_ai_was_assessment": False,
-            "current_assessment_task": ""
+            # 캐시 관련 필드 초기화
+            "cached_question_found": False,
+            "cached_question_score": 0.0,
+            "reused_question": ""
         }
         
         # 그래프 실행
@@ -831,17 +899,12 @@ class LangGraphDementiaChatbot:
         print(f"AI 응답: {final_state['ai_response']}")
         print(f"응답 타입: {final_state['response_type']}")
         print(f"워크플로우 단계: {final_state['workflow_stage']}")
-        print(f"재시도 횟수: {final_state.get('retry_count', 0)}")
         
         # Assessment 답변 채점 결과 출력 (백그라운드)
         if final_state.get('is_assessment_answer', False):
             print(f"Assessment 답변 감지됨!")
             print(f"채점 점수: {final_state.get('assessment_score', 0.0):.2f}/1.0")
             print(f"채점 상세: {final_state.get('score_details', {})}")
-        
-        # 백그라운드 준비 상태 출력
-        if final_state.get('background_ready', False):
-            print(f"백그라운드 질문 준비됨 (점수: {final_state.get('background_score', 0.0):.2f})")
         
         return {
             "user_message": message,
@@ -853,10 +916,6 @@ class LangGraphDementiaChatbot:
             "response_type": final_state["response_type"],
             "ai_response": final_state["ai_response"],
             "workflow_stage": final_state["workflow_stage"],
-            "retry_count": final_state.get("retry_count", 0),
-            "background_question": final_state.get("background_question", ""),
-            "background_score": final_state.get("background_score", 0.0),
-            "background_ready": final_state.get("background_ready", False),
             # 채점 결과 (백그라운드에서만 기록)
             "is_assessment_answer": final_state.get("is_assessment_answer", False),
             "last_assessment_question": final_state.get("last_assessment_question", ""),
@@ -906,5 +965,39 @@ if __name__ == "__main__":
     print(f"AI 응답: {result2['ai_response']}")
     print(f"응답 타입: {result2['response_type']}")
     print(f"피드백 제공: 없음 (자연스럽게 다음 대화로 이어짐)")
+    
+    # 테스트 3: Task threshold를 만족하지 않을 때 casual 대화
+    print(f"\n{'=== 테스트 3: Task threshold 미만 -> Casual 대화 ===':=^80}")
+    conversation_history_3 = [
+        {"role": "user", "content": "안녕하세요."},
+        {"role": "assistant", "content": "안녕하세요! 어떻게 지내셨어요?"},
+    ]
+    
+    casual_message = "오늘 기분이 좋아요."
+    result3 = chatbot.chat_with_history(casual_message, conversation_history_3)
+    
+    print(f"\n{'테스트 3 결과':=^80}")
+    print(f"메시지: '{result3['user_message']}'")
+    print(f"선택 태스크: {result3['selected_task']} (점수: {result3['task_message_relevance']:.2f})")
+    print(f"AI 응답: {result3['ai_response']}")
+    print(f"응답 타입: {result3['response_type']}")
+    
+    # 테스트 4: Assessment 모드에서 질문 맥락 점수 부족 -> Casual 대화
+    print(f"\n{'=== 테스트 4: Assessment 질문 맥락 점수 부족 -> Casual 대화 ===':=^80}")
+    conversation_history_4 = [
+        {"role": "user", "content": "좋은 하루였어요."},
+        {"role": "assistant", "content": "정말 좋네요! 무엇이 좋았나요?"},
+    ]
+    
+    # 시간 관련이지만 맥락상 어색할 수 있는 메시지
+    time_message = "지금 몇 시인지 궁금해요."
+    result4 = chatbot.chat_with_history(time_message, conversation_history_4)
+    
+    print(f"\n{'테스트 4 결과':=^80}")
+    print(f"메시지: '{result4['user_message']}'")
+    print(f"선택 태스크: {result4['selected_task']} (점수: {result4['task_message_relevance']:.2f})")
+    print(f"질문-메시지 맥락 점수: {result4['question_message_relevance']:.2f}")
+    print(f"AI 응답: {result4['ai_response']}")
+    print(f"응답 타입: {result4['response_type']}")
     
     print(f"\n{'전체 테스트 완료':=^80}")

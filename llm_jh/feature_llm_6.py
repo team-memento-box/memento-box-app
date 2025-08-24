@@ -1,5 +1,5 @@
 """
-6. Assessment 답변 채점 시스템 추가 (피드백 제거 버전)
+7. state 기반으로 평가를 위한 이전 질문 추적 방식 변경
 """
 import os   
 import json
@@ -29,20 +29,13 @@ class ConversationState(TypedDict):
     conversation_mode: Literal["assessment", "casual"] 
     ai_response: str                       
     response_type: str                     
-    workflow_stage: str                    
-    retry_count: int                       
-    background_question: str               
-    background_score: float                
-    background_ready: bool                 
+    workflow_stage: str                                 
     # 채점 관련 필드
     is_assessment_answer: bool             # 현재 메시지가 assessment 답변인지
     last_assessment_question: str          # 마지막으로 한 assessment 질문
     last_assessment_task: str              # 마지막 assessment의 task 타입
     assessment_score: float                # 답변 점수 (0-1)
     score_details: Dict[str, Any]          # 상세 채점 결과
-    # 상태 추적 필드
-    last_ai_was_assessment: bool           # 마지막 AI 응답이 assessment 질문이었는지
-    current_assessment_task: str           # 현재 진행 중인 assessment task
 
 @dataclass
 class ChatbotConfig:
@@ -147,7 +140,7 @@ class LangGraphDementiaChatbot:
         # 시작점: 먼저 assessment 답변인지 확인
         workflow.set_entry_point("check_if_assessment_answer")
         
-        # Assessment 답변 채점 플로우
+        # Assessment 답변 채점 플로우 (피드백 제거 - 바로 기존 플로우로 이어짐)
         workflow.add_conditional_edges(
             "check_if_assessment_answer",
             self._decide_if_scoring_needed,
@@ -157,7 +150,7 @@ class LangGraphDementiaChatbot:
             }
         )
         
-        # 채점 후 바로 기존 플로우로 이어짐 
+        # 채점 후 바로 기존 플로우로 이어짐
         workflow.add_edge("score_assessment_answer", "calculate_task_scores")
         
         # 기본 플로우 
@@ -196,35 +189,28 @@ class LangGraphDementiaChatbot:
         return workflow.compile()
 
     def check_if_assessment_answer(self, state: ConversationState) -> ConversationState:
-        """상태 기반: 현재 메시지가 assessment 질문에 대한 답변인지 확인"""
+        """상태 기반 Assessment 답변 확인"""
         print("답변 확인: 상태 기반 Assessment 답변 체크...")
         
-        messages = state["messages"]
+        # 상태에서 직접 확인 (빠름)
+        is_assessment_answer = state.get("last_question_type") == "assessment"
+        last_assessment_task = state.get("last_assessment_task", "")
         
-        # 마지막 AI 메시지 찾기
+        # 마지막 AI 메시지도 찾아야 함 (채점에서 사용)
         last_ai_message = ""
+        messages = state["messages"]
         for i in range(len(messages) - 1, -1, -1):
             if isinstance(messages[i], AIMessage):
                 last_ai_message = messages[i].content
                 break
         
-        # 상태에서 이전 상태 확인 (상태 기반 추적)
-        last_ai_was_assessment = state.get("last_ai_was_assessment", False)
-        current_assessment_task = state.get("current_assessment_task", "")
-        
-        # 이전 AI 응답이 assessment 질문이었으면 현재 사용자 메시지는 답변
-        is_assessment_answer = last_ai_was_assessment
-        last_assessment_task = current_assessment_task if is_assessment_answer else ""
-        
         if is_assessment_answer:
             print(f"상태 추적: Assessment 답변 감지! Task: {last_assessment_task}")
-        else:
-            print("상태 추적: Assessment 답변 아님")
         
         return {
             **state,
             "is_assessment_answer": is_assessment_answer,
-            "last_assessment_question": last_ai_message,
+            "last_assessment_question": last_ai_message,  # 채점에서 필요
             "last_assessment_task": last_assessment_task
         }
 
@@ -574,23 +560,19 @@ class LangGraphDementiaChatbot:
         return {**state, "question_message_relevance": question_message_relevance}
 
     def output_assessment_question(self, state: ConversationState) -> ConversationState:
-        """8. 평가 질문 출력 + 상태 업데이트"""
+        """8. 평가 질문 출력"""
         print("8단계: 평가 질문 출력")
         selected_question = state["selected_question"]
-        selected_task = state["selected_task"]
         
         return {
             **state, 
             "ai_response": selected_question,
             "response_type": "assessment",
-            "workflow_stage": "assessment_question_output",
-            # 상태 추적 업데이트: 이번 AI 응답이 assessment 질문임을 기록
-            "last_ai_was_assessment": True,
-            "current_assessment_task": selected_task
+            "workflow_stage": "assessment_question_output"
         }
 
     def casual_conversation(self, state: ConversationState) -> ConversationState:
-        """일상 대화 처리 + 상태 리셋"""
+        """일상 대화 처리"""
         print("일상 대화 모드")
         messages = state["messages"]
         current_message = state["current_message"]
@@ -625,10 +607,7 @@ class LangGraphDementiaChatbot:
             **state,
             "ai_response": ai_response,
             "response_type": response_type,
-            "workflow_stage": "casual_chat",
-            # 상태 리셋: casual 응답이므로 assessment 상태 해제
-            "last_ai_was_assessment": False,
-            "current_assessment_task": ""
+            "workflow_stage": "casual_chat"
         }
 
     def casual_with_background_retry(self, state: ConversationState) -> ConversationState:
@@ -740,10 +719,7 @@ class LangGraphDementiaChatbot:
             "retry_count": retry_count + 1,
             "background_question": background_question,
             "background_score": background_score,
-            "background_ready": background_ready,
-            # 상태 리셋: casual 응답이므로 assessment 상태 해제
-            "last_ai_was_assessment": False,
-            "current_assessment_task": ""
+            "background_ready": background_ready
         }
 
     # === 조건부 엣지 결정 함수들 ===
@@ -818,10 +794,7 @@ class LangGraphDementiaChatbot:
             "last_assessment_question": "",
             "last_assessment_task": "",
             "assessment_score": 0.0,
-            "score_details": {},
-            # 상태 추적 필드 초기화
-            "last_ai_was_assessment": False,
-            "current_assessment_task": ""
+            "score_details": {}
         }
         
         # 그래프 실행
@@ -853,10 +826,6 @@ class LangGraphDementiaChatbot:
             "response_type": final_state["response_type"],
             "ai_response": final_state["ai_response"],
             "workflow_stage": final_state["workflow_stage"],
-            "retry_count": final_state.get("retry_count", 0),
-            "background_question": final_state.get("background_question", ""),
-            "background_score": final_state.get("background_score", 0.0),
-            "background_ready": final_state.get("background_ready", False),
             # 채점 결과 (백그라운드에서만 기록)
             "is_assessment_answer": final_state.get("is_assessment_answer", False),
             "last_assessment_question": final_state.get("last_assessment_question", ""),
