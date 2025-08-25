@@ -66,6 +66,8 @@ class MyCustomApp extends StatelessWidget {
       initialRoute: '/signin', 
       // ✅ [onGenerateRoute] 사용으로 변경
       onGenerateRoute: (settings) {
+        print('🔍 [onGenerateRoute] Requested route: ${settings.name}');
+        print('🔍 [onGenerateRoute] Arguments: ${settings.arguments}');
         if (settings.name != null && settings.name!.startsWith('/home')) {
           return MaterialPageRoute(builder: (context) => const HomeUpdateScreen());
         }
@@ -120,8 +122,11 @@ class MyCustomApp extends StatelessWidget {
             );
           }
         }
-        if (settings.name == '/callback') {
-          // 카카오 OAuth 콜백 처리 - 로딩 화면 표시
+        // 카카오 OAuth 콜백 처리 - code 파라미터 감지
+        if (settings.name?.contains('code=') == true ||
+            settings.name == '/callback' || 
+            settings.name == 'callback') {
+          print('🔗 [OAuth Callback] Detected OAuth callback: ${settings.name}');
           return MaterialPageRoute(
             builder: (context) => const Scaffold(
               backgroundColor: Colors.white,
@@ -139,10 +144,22 @@ class MyCustomApp extends StatelessWidget {
             ),
           );
         }
-        // ✅ 잘못된 경로 대비 fallback
+        // ✅ 알 수 없는 경로 대비 fallback - OAuth 처리중일 가능성 고려
+        print('❓ [Unknown Route] Falling back for route: ${settings.name}');
         return MaterialPageRoute(
           builder: (context) => const Scaffold(
-            body: Center(child: Text('❌ 존재하지 않는 경로입니다')),
+            backgroundColor: Colors.white,
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('페이지 로딩 중...', 
+                       style: TextStyle(fontSize: 16, fontFamily: 'Pretendard')),
+                ],
+              ),
+            ),
           ),
         );
       },
