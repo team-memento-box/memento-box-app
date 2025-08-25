@@ -21,3 +21,8 @@ soundfile
 pydub
 httpx==0.27.2
 supabase
+langchain
+langchain-openai
+langchain-core
+langgraph
+websockets
