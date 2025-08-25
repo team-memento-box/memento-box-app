@@ -2,7 +2,6 @@ from typing import TypedDict, List, Dict, Any, Optional
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
-from langgraph.prebuilt import ToolExecutor
 import os
 from supabase import create_client, Client
 import uuid
@@ -39,13 +38,11 @@ class DialogueWorkflow:
     
     def __init__(self):
         self.llm_mini = ChatOpenAI(
-            model="gpt-3.5-turbo",
-            temperature=0.7,
+            model="gpt-5-mini",
             api_key=os.getenv("OPENAI_API_KEY")
         )
         self.llm_nano = ChatOpenAI(
-            model="gpt-3.5-turbo",
-            temperature=0.5,
+            model="gpt-5-nano",
             max_tokens=256,
             api_key=os.getenv("OPENAI_API_KEY")
         )

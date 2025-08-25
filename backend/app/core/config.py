@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     # JWT 설정
     SECRET_KEY: str
     
+    # OpenAI API 설정
+    OPENAI_API_KEY: str
+    
     # # Azure Blob Storage 설정
     # AZURE_BLOBSTORAGE_ACCOUNT: str
     # AZURE_BLOBSTORAGE_KEY: str
