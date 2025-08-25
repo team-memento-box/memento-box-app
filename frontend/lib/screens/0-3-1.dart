@@ -32,7 +32,7 @@ class GroupSelectScreen extends StatelessWidget {
                 children: [
                   // 1. 이미지 추가
                   Image.asset(
-                    'assets/images/mori.png',
+                    'assets/images/temp_logo.png',
                     width: 200, // 원하는 크기로 조절
                     height: 200,
                     fit: BoxFit.contain,

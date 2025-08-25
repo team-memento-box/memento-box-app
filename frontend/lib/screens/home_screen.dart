@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../widgets/image_card_widget.dart';
 import '../widgets/tap_widget.dart';
+import '../widgets/group_bar_widget.dart';
 import 'package:provider/provider.dart';
 import '../user_provider.dart';
 import '../data/photo_api.dart';
@@ -62,37 +63,26 @@ class _HomeUpdateScreenState extends State<HomeUpdateScreen> {
   Widget build(BuildContext context) {
     final userProvider = Provider.of<UserProvider>(context);
 
+    final familyName = userProvider.familyName ?? '우리 가족';
+    
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F7F7),
-      appBar: PreferredSize(
-        preferredSize: Size.fromHeight(80.0),
-        child: AppBar(
-          title: Text(
-            userProvider.familyName ?? '우리 가족',
-            style: const TextStyle(
-              fontSize: 25,
-              fontWeight: FontWeight.w800,
-              fontFamily: 'Pretendard',
-              letterSpacing: 0,
-              color: Colors.white,
+      backgroundColor: Colors.white,
+      appBar: GroupBar(title: familyName),
+      body: Container(
+        color: const Color(0xFFF7F7F7),
+        child: RefreshIndicator(
+          onRefresh: _loadRecentNews,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                const ProfileHeader(),
+                const SizedBox(height: 20),
+                const SectionTitle(title: '최근 소식'),
+                const SizedBox(height: 10),
+                _buildRecentNews(),
+              ],
             ),
-          ),
-          centerTitle: true,
-          backgroundColor: const Color(0xFF8CCAA7),
-        ),
-      ),
-      body: RefreshIndicator(
-        onRefresh: _loadRecentNews,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              const ProfileHeader(),
-              const SizedBox(height: 20),
-              const SectionTitle(title: '최근 소식'),
-              const SizedBox(height: 10),
-              _buildRecentNews(),
-            ],
           ),
         ),
       ),

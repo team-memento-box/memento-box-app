@@ -105,6 +105,9 @@ class Report {
   final DateTime? sharedAt;
   final DateTime createdAt;
   final SessionData? session;
+  // 사용자 정보 필드 추가
+  final String? userName; // users.full_name
+  final DateTime? userBirthDate; // users.birth_date
 
   Report({
     required this.id,
@@ -121,6 +124,8 @@ class Report {
     this.sharedAt,
     required this.createdAt,
     this.session,
+    this.userName,
+    this.userBirthDate,
   });
 
   factory Report.fromSupabase(Map<String, dynamic> json) {
@@ -139,6 +144,10 @@ class Report {
       sharedAt: json['shared_at'] != null ? DateTime.parse(json['shared_at']) : null,
       createdAt: DateTime.parse(json['created_at']),
       session: json['sessions'] != null ? SessionData.fromJson(json['sessions']) : null,
+      userName: json['users'] != null ? json['users']['full_name'] : null,
+      userBirthDate: json['users'] != null && json['users']['birth_date'] != null
+          ? DateTime.parse(json['users']['birth_date'])
+          : null,
     );
   }
 
@@ -188,4 +197,27 @@ class Report {
         return '미분류';
     }
   }
-} 
+
+  // 연령대 계산 (10의 자리대로 끼어서)
+  String get ageGroup {
+    if (userBirthDate == null) return '연령 미상';
+    
+    final now = DateTime.now();
+    final age = now.year - userBirthDate!.year;
+    
+    // 생일이 지나지 않았으면 나이에서 1을 뺀
+    final adjustedAge = now.month < userBirthDate!.month ||
+            (now.month == userBirthDate!.month && now.day < userBirthDate!.day)
+        ? age - 1
+        : age;
+    
+    final ageGroupNumber = (adjustedAge ~/ 10) * 10;
+    return '$ageGroupNumber대';
+  }
+
+  // 사용자 이름 (님 붙여서)
+  String get userDisplayName {
+    if (userName == null || userName!.isEmpty) return '사용자';
+    return userName!.endsWith('님') ? userName! : '${userName!}님';
+  }
+}

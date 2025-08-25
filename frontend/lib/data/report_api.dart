@@ -2,11 +2,47 @@ import '../core/supabase_service.dart';
 import '../models/report.dart';
 
 class ReportApi {
-  /// 사용자의 모든 세션 리포트 조회
-  static Future<List<Report>> fetchReports(String userId) async {
+  /// 가족 구성원의 모든 세션 리포트 조회
+  static Future<List<Report>> fetchReports(String accessToken) async {
     try {
-      print('🔍 Fetching reports for user: $userId');
+      // accessToken에서 현재 사용자 정보 추출
+      final currentUser = SupabaseService.client.auth.currentUser;
+      if (currentUser == null) {
+        throw Exception('사용자가 인증되지 않았습니다.');
+      }
+      final currentUserId = currentUser.id;
       
+      print('🔍 Fetching family reports for guardian: $currentUserId');
+      
+      // 1. 현재 사용자의 가족 ID 조회
+      final familyMember = await SupabaseService.client
+          .from('family_members')
+          .select('family_id')
+          .eq('user_id', currentUserId)
+          .maybeSingle();
+      
+      if (familyMember == null) {
+        print('❌ Family member info not found for user: $currentUserId');
+        return [];
+      }
+      
+      final familyId = familyMember['family_id'];
+      print('🔍 Family ID: $familyId');
+      
+      // 2. 가족 구성원들의 user_id 목록 조회
+      final familyMembers = await SupabaseService.client
+          .from('family_members')
+          .select('user_id')
+          .eq('family_id', familyId);
+      
+      final memberUserIds = familyMembers.map((m) => m['user_id'] as String).toList();
+      print('🔍 Family member user IDs: $memberUserIds');
+      
+      if (memberUserIds.isEmpty) {
+        return [];
+      }
+      
+      // 3. 가족 구성원들의 세션 리포트 조회 (사용자 정보 포함)
       final response = await SupabaseService.client
           .from('session_reports')
           .select('''
@@ -23,6 +59,11 @@ class ReportApi {
             is_shared,
             shared_at,
             created_at,
+            users!inner(
+              id,
+              full_name,
+              birth_date
+            ),
             sessions!inner(
               id,
               status,
@@ -34,7 +75,7 @@ class ReportApi {
               notes
             )
           ''')
-          .eq('user_id', userId)
+          .inFilter('user_id', memberUserIds)
           .order('created_at', ascending: false);
 
       print('✅ Found ${response.length} reports');
@@ -67,6 +108,11 @@ class ReportApi {
             is_shared,
             shared_at,
             created_at,
+            users!inner(
+              id,
+              full_name,
+              birth_date
+            ),
             sessions!inner(
               id,
               status,
