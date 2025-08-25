@@ -39,6 +39,8 @@ dependencies:
   flutter_dotenv: ^5.2.1         # ✅ 환경 변수 관리
   http: ^0.13.6                  # ✅ API 호출
   provider: ^6.1.1               # ✅ 상태 관리
+  uuid: ^4.5.1                   # ✅ UUID 생성
+  web_socket_channel: ^3.0.1     # ✅ WebSocket 클라이언트
             # 🏷️ 상태 관리 패턴을 위한 Provider 패키지
 
   # The following adds the Cupertino Icons font to your application.

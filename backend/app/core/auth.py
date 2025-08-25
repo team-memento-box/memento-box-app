@@ -1,14 +1,10 @@
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Dict, Any
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
 from passlib.context import CryptContext
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from db.database import get_db
-from db.models.user import User
-from core.config import settings
+import jwt
+from core.config import settings, supabase, supabase_admin
 
 # 비밀번호 해싱을 위한 설정
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -40,28 +36,63 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-async def get_current_user(
-    token: str = Depends(oauth2_scheme),
-    db: AsyncSession = Depends(get_db)
-) -> User:
-    """현재 인증된 사용자 정보 조회"""
+async def verify_supabase_jwt(token: str) -> Dict[str, Any]:
+    """Supabase JWT 토큰 검증 및 사용자 정보 반환"""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="인증 정보가 유효하지 않습니다",
+        detail="Supabase 인증 정보가 유효하지 않습니다",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    
     try:
-        # JWT 토큰 디코딩
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id: str = payload.get("sub")
-        if user_id is None:
+        print(f"🔐 JWT 토큰 검증 시작: {token[:50]}...")
+        
+        # Supabase Admin 클라이언트로 토큰 검증
+        # get_user() 메서드를 사용하여 JWT 토큰 검증
+        user_response = supabase_admin.auth.get_user(token)
+        
+        if not user_response or not user_response.user:
+            print(f"❌ 사용자 정보 없음: user_response={user_response}")
             raise credentials_exception
-    except JWTError:
-        raise credentials_exception
+            
+        user = user_response.user
+        print(f"✅ JWT 검증 성공: user_id={user.id}, email={user.email}")
+        
+        return {
+            "id": user.id,
+            "email": user.email,
+            "created_at": user.created_at,
+            "user_metadata": user.user_metadata or {},
+            "app_metadata": user.app_metadata or {}
+        }
+        
+    except Exception as e:
+        error_msg = f"Supabase JWT 검증 실패: {type(e).__name__}: {str(e)}"
+        print(f"❌ {error_msg}")
+        import traceback
+        print(f"📋 상세 오류: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=error_msg,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-    # 사용자 정보 조회
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if user is None:
-        raise credentials_exception
-    return user 
+async def get_supabase_user(token: str) -> Dict[str, Any]:
+    """헤더에서 토큰을 추출하여 Supabase 사용자 정보 반환"""
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="인증 토큰이 없습니다"
+        )
+    
+    # Bearer 토큰에서 실제 토큰 부분만 추출
+    if token.startswith("Bearer "):
+        token = token[7:]
+    
+    return await verify_supabase_jwt(token)
+
+async def get_current_user(
+    token: str = Depends(oauth2_scheme)
+) -> Dict[str, Any]:
+    """현재 인증된 사용자 정보 조회 (Supabase JWT 시스템)"""
+    return await get_supabase_user(token) 
