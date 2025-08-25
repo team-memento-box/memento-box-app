@@ -237,12 +237,20 @@ class _PhotoDetailScreenState extends State<PhotoDetailScreen> {
                                     print('Signed URL 생성 실패: $e');
                                   }
                                 }
+                                  // source_session_ids에서 첫 번째 세션 ID 가져오기
+                                  String? sessionId;
+                                  if (storyData['source_session_ids'] != null && 
+                                      (storyData['source_session_ids'] as List).isNotEmpty) {
+                                    sessionId = (storyData['source_session_ids'] as List)[0];
+                                  }
+                                  
                                   showSummaryModal(
                                     context,
                                     audioPath: audioUrl,
                                     audioService: _audioService,
                                     summaryText: storyData['story_text'],
                                     createdAt: storyData['created_at'],
+                                    sessionId: sessionId,
                                   );
                                 } else {
                                   // 스토리가 없으면 기존 방식 사용
@@ -253,6 +261,7 @@ class _PhotoDetailScreenState extends State<PhotoDetailScreen> {
                                     audioService: _audioService,
                                     summaryText: result['summaryText'],
                                     createdAt: result['createdAt'],
+                                    sessionId: null,
                                   );
                                 }
                               },
