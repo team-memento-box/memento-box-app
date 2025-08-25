@@ -140,21 +140,21 @@ class _KakaoSigninScreenState extends State<KakaoSigninScreen> with WidgetsBindi
 
         print('✅ Profile created successfully');
 
-        // UserProvider에 사용자 정보 로드
+        // UserProvider에 사용자 정보 로드 및 isGuardian 값 설정
         if (mounted) {
           final userProvider = Provider.of<UserProvider>(context, listen: false);
           await userProvider.loadUserFromSupabase();
+          // userType 기반으로 isGuardian 값 명시적 설정
+          if (_userType != null) {
+            final isGuardianValue = _userType == 'guardian';
+            userProvider.setIsGuardian(isGuardianValue);
+            print('✅ Set UserProvider isGuardian to: $isGuardianValue (based on userType: $_userType)');
+          }
         }
 
         if (mounted) {
-          print('🧭 Navigation decision: userType=$_userType, isGuardian=$isGuardian');
-          if (isGuardian) {
-            print('🧭 Guardian: 0-3-1 -> 0-3-1-1 -> intro');
-            Navigator.pushNamed(context, '/0-3-1');
-          } else {
-            print('🧭 Dependent: 0-3-2 -> intro');
-            Navigator.pushNamed(context, '/0-3-2');
-          }
+          print('🧭 New user: navigating to profile input screen');
+          Navigator.pushNamed(context, '/profile-input');
         }
       } else {
         print('👋 Existing user login');
@@ -191,13 +191,8 @@ class _KakaoSigninScreenState extends State<KakaoSigninScreen> with WidgetsBindi
             print('🧭 Existing user: Direct to home');
             Navigator.pushNamed(context, '/home');
           } else {
-            if (shouldGoToGuardianFlow) {
-              print('🧭 Guardian: 0-3-1 -> 0-3-1-1 -> intro');
-              Navigator.pushNamed(context, '/0-3-1');
-            } else {
-              print('🧭 Dependent: 0-3-2 -> intro');
-              Navigator.pushNamed(context, '/0-3-2');
-            }
+            print('🧭 Existing user: navigating to profile input screen');
+            Navigator.pushNamed(context, '/profile-input');
           }
         }
       }

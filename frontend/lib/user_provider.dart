@@ -212,6 +212,12 @@ class UserProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// isGuardian 값 설정
+  void setIsGuardian(bool isGuardian) {
+    this.isGuardian = isGuardian;
+    notifyListeners();
+  }
+
   void clearUser() {
     id = null;
     email = null;

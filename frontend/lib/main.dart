@@ -2,6 +2,7 @@ import 'screens/mypage.dart';
 import 'package:provider/provider.dart'; // ✅ 추가✅
 import '../user_provider.dart'; // ✅ 추가✅
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'screens/kakao_signin_screen.dart';
 import 'package:memento_box_app/screens/home_screen.dart';
 import 'screens/signin_screen.dart'; //홍원추가
@@ -10,6 +11,7 @@ import 'screens/gallery_screen.dart';
 import 'screens/add_photo_screen.dart';
 import 'screens/conversation_screen_simple.dart'; // ✅ 새ka로 만든 대화 스크린 import
 import 'screens/intro_screen.dart'; // ✅ 새로 만든 인트로 스크린 import
+import 'screens/profile_input_screen.dart'; // 개인정보 입력 화면
 import 'screens/0-3-1.dart'; // Guardian 선택 화면
 import 'screens/0-3-1-1.dart'; // Guardian 그룹 생성 화면
 import 'screens/0-3-2.dart'; // Dependent 코드 입력 화면
@@ -50,6 +52,17 @@ class MyCustomApp extends StatelessWidget {
       title: 'Memento Box',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(primarySwatch: Colors.teal, fontFamily: 'Pretendard'),
+      // 지역화 설정 추가
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('ko', 'KR'), // 한국어
+        Locale('en', 'US'), // 영어
+      ],
+      locale: const Locale('ko', 'KR'), // 기본 로케일 한국어
       initialRoute: '/signin', 
       // ✅ [onGenerateRoute] 사용으로 변경
       onGenerateRoute: (settings) {
@@ -84,6 +97,9 @@ class MyCustomApp extends StatelessWidget {
         if (settings.name == '/profile') {
           return MaterialPageRoute(builder: (context) => const MyPage());
         }
+        if (settings.name == '/profile-input') {
+          return MaterialPageRoute(builder: (context) => const ProfileInputScreen());
+        }
         if (settings.name == '/report') {
           return MaterialPageRoute(builder: (context) => const ReportListScreen());
         }
@@ -103,6 +119,25 @@ class MyCustomApp extends StatelessWidget {
               builder: (context) => PhotoDetailScreen(photoData: photoData),
             );
           }
+        }
+        if (settings.name == '/callback') {
+          // 카카오 OAuth 콜백 처리 - 로딩 화면 표시
+          return MaterialPageRoute(
+            builder: (context) => const Scaffold(
+              backgroundColor: Colors.white,
+              body: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('로그인 처리 중...', 
+                         style: TextStyle(fontSize: 16, fontFamily: 'Pretendard')),
+                  ],
+                ),
+              ),
+            ),
+          );
         }
         // ✅ 잘못된 경로 대비 fallback
         return MaterialPageRoute(

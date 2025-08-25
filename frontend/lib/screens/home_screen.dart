@@ -176,6 +176,11 @@ class ProfileHeader extends StatelessWidget {
     final username = userProvider.name ?? '이름 없음';
     final profileImg = userProvider.profileImg?.replaceFirst('http://', 'https://') ?? ''; // 보안상 쩔수
     final familyRole = userProvider.familyRole ?? '역할 없음';
+    
+    // 디버깅용 로그 추가
+    print('🖼️ [ProfileHeader] username: $username');
+    print('🖼️ [ProfileHeader] profileImg: $profileImg');
+    print('🖼️ [ProfileHeader] familyRole: $familyRole');
 
     return Column(
       children: [

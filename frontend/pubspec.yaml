@@ -30,6 +30,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   app_links: ^6.0.0
   supabase_flutter: ^2.3.4       # ✅ Supabase 클라이언트 (DB, Auth, Storage)
   kakao_flutter_sdk_user: ^1.4.2 # ✅ (선택) 카카오 API 직접 호출할 때만 필요 (예: 프로필)
