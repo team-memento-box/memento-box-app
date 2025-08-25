@@ -55,3 +55,11 @@ Complete the implementation plan with testing strategies, deployment considerati
 # INSTRUCTIONS
 
 Follow each step sequentially. Complete one step before moving to the next. Use the findings from each previous step to inform the next step.
+
+# APPROVED MCP TOOLS
+
+You may use the following MCPs if they help your work. State when and why you use them:
+
+-   Context7 MCP — for code search and context gathering
+-   Playwright MCP — for UI/E2E validation
+-   Sequential Thinking MCP — for structured reasoning

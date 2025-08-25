@@ -233,6 +233,16 @@ class _KakaoSigninScreenState extends State<KakaoSigninScreen> with WidgetsBindi
       final currentUser = SupabaseService.client.auth.currentUser;
       print('👤 Current user before OAuth: ${currentUser?.id ?? "NULL"}');
       
+      // 기존 세션이 있으면 먼저 로그아웃
+      if (currentUser != null) {
+        print('🚪 기존 세션 발견 - 로그아웃 후 재로그인');
+        await SupabaseService.client.auth.signOut();
+        
+        // 로그아웃 후 잠시 대기
+        await Future.delayed(const Duration(milliseconds: 1000));
+        print('✅ 로그아웃 완료');
+      }
+      
       // OAuth 시작
       await SupabaseService.client.auth.signInWithOAuth(
         OAuthProvider.kakao,
