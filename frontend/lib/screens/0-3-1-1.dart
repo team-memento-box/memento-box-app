@@ -254,153 +254,384 @@ class _GroupCreateScreenState extends State<GroupCreateScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF8F9FA),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF333333)),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          '가족 설정',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            fontFamily: 'Pretendard',
+            color: Color(0xFF333333),
+          ),
+        ),
+        centerTitle: true,
+      ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            children: [
+              _buildHeader(),
+              const SizedBox(height: 32),
+              _buildModeSelector(),
+              const SizedBox(height: 32),
+              _buildMainCard(),
+              if (showRelationDropdown) ...[
                 const SizedBox(height: 24),
-                // 상단 타이틀
+                _buildRelationCard(),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Column(
+      children: [
+        Container(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+            color: const Color(0xFF8CCAA7).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Icon(
+            isCreating ? Icons.group_add : Icons.group,
+            size: 40,
+            color: const Color(0xFF8CCAA7),
+          ),
+        ),
+        const SizedBox(height: 20),
+        Text(
+          isCreating ? '가족 그룹 생성하기' : '가족 그룹 가입하기',
+          style: const TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+            fontFamily: 'Pretendard',
+            color: Color(0xFF333333),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          isCreating 
+            ? '새로운 가족 그룹을 만들고\n가족들을 초대해보세요'
+            : '가족 코드를 입력하여\n기존 가족 그룹에 참여하세요',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 16,
+            color: Colors.grey[600],
+            fontFamily: 'Pretendard',
+            height: 1.4,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildModeSelector() {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(child: _buildModeButton('생성하기', isCreating)),
+          Expanded(child: _buildModeButton('가입하기', !isCreating)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMainCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (isCreating) ...[
+            if (familyCode == null) ...[
+              _buildCreateContent(),
+            ] else ...[
+              _buildCodeDisplay(),
+            ],
+          ] else ...[
+            _buildJoinContent(),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCreateContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              Icons.family_restroom,
+              color: const Color(0xFF8CCAA7),
+              size: 24,
+            ),
+            const SizedBox(width: 8),
+            const Text(
+              '가족 그룹명 설정',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                fontFamily: 'Pretendard',
+                color: Color(0xFF333333),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8F9FA),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Colors.grey.withOpacity(0.2),
+            ),
+          ),
+          child: TextField(
+            controller: familyNameController,
+            decoration: const InputDecoration(
+              hintText: '우리 가족',
+              hintStyle: TextStyle(
+                color: Color(0xFF999999),
+                fontFamily: 'Pretendard',
+              ),
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.all(16),
+              prefixIcon: Icon(
+                Icons.edit,
+                color: Color(0xFF8CCAA7),
+              ),
+            ),
+            textInputAction: TextInputAction.done,
+            style: const TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: ElevatedButton(
+            onPressed: _generateCode,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF8CCAA7),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              elevation: 0,
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.qr_code, color: Colors.white, size: 20),
+                SizedBox(width: 8),
                 Text(
-                  isCreating ? '가족 그룹 생성하기' : '가족 그룹 가입하기',
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    fontFamily: 'Pretendard',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  isCreating 
-                    ? '가족 그룹을 생성하고 코드를 발급받으세요.'
-                    : '가족 그룹 코드를 입력하여 가입하세요.',
-                  style: const TextStyle(
+                  '가족 코드 발급받기',
+                  style: TextStyle(
                     fontSize: 16,
-                    color: Colors.grey,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
                     fontFamily: 'Pretendard',
                   ),
                 ),
-                const SizedBox(height: 32),
-                
-                // 모드 전환 버튼
-                Center(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF5F5F5),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildModeButton('생성하기', isCreating),
-                        _buildModeButton('가입하기', !isCreating),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 32),
-
-                // 생성/가입 컨텐츠
-                if (isCreating) ...[
-                  if (familyCode == null) ...[
-                    TextField(
-                      controller: familyNameController,
-                      decoration: InputDecoration(
-                        hintText: '가족 그룹명을 입력하세요',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                      ),
-                      textInputAction: TextInputAction.done,
-                      keyboardType: TextInputType.text,
-                      style: const TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Center(
-                      child: ElevatedButton(
-                        onPressed: _generateCode,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF8CCAA7),
-                          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text(
-                          '가족 코드 발급받기',
-                          style: TextStyle(
-                            fontSize: 18,
-                            color: Colors.white,
-                            fontFamily: 'Pretendard',
-                          ),
-                        ),
-                      ),
-                    ),
-                  ] else ...[
-                    _buildCodeDisplay(),
-                  ],
-                ] else ...[
-                  TextField(
-                    controller: codeInputController,
-                    decoration: InputDecoration(
-                      hintText: '가족 코드를 입력하세요',
-                      errorText: error,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _joinFamily,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF8CCAA7),
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text(
-                        '가족 코드 확인',
-                        style: TextStyle(
-                          fontSize: 18,
-                          color: Colors.white,
-                          fontFamily: 'Pretendard',
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-
-                if (showRelationDropdown) ...[
-                  const SizedBox(height: 32),
-                  const Text(
-                    '가족 관계를 선택해주세요',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Pretendard',
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  FamilyRelationDropdown(
-                    onChanged: _onRelationSelected,
-                  ),
-                ],
               ],
             ),
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _buildJoinContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              Icons.input,
+              color: const Color(0xFF8CCAA7),
+              size: 24,
+            ),
+            const SizedBox(width: 8),
+            const Text(
+              '가족 코드 입력',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                fontFamily: 'Pretendard',
+                color: Color(0xFF333333),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8F9FA),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: error != null 
+                  ? Colors.red.withOpacity(0.5)
+                  : Colors.grey.withOpacity(0.2),
+            ),
+          ),
+          child: TextField(
+            controller: codeInputController,
+            textAlign: TextAlign.center,
+            decoration: InputDecoration(
+              hintText: '6자리 코드 입력',
+              hintStyle: const TextStyle(
+                color: Color(0xFF999999),
+                fontFamily: 'Pretendard',
+              ),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.all(16),
+              prefixIcon: const Icon(
+                Icons.numbers,
+                color: Color(0xFF8CCAA7),
+              ),
+              errorText: error,
+              errorStyle: const TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 12,
+              ),
+            ),
+            keyboardType: TextInputType.number,
+            style: const TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 2,
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: ElevatedButton(
+            onPressed: _joinFamily,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF8CCAA7),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              elevation: 0,
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.search, color: Colors.white, size: 20),
+                SizedBox(width: 8),
+                Text(
+                  '가족 찾기',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                    fontFamily: 'Pretendard',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRelationCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.people,
+                color: const Color(0xFF8CCAA7),
+                size: 24,
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                '가족 관계 선택',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'Pretendard',
+                  color: Color(0xFF333333),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '가족 구성원들과의 관계를 선택해주세요',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[600],
+              fontFamily: 'Pretendard',
+            ),
+          ),
+          const SizedBox(height: 16),
+          FamilyRelationDropdown(
+            onChanged: _onRelationSelected,
+          ),
+        ],
       ),
     );
   }
@@ -418,18 +649,20 @@ class _GroupCreateScreenState extends State<GroupCreateScreen> {
         });
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         decoration: BoxDecoration(
           color: isSelected ? const Color(0xFF8CCAA7) : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Text(
-          text,
-          style: TextStyle(
-            color: isSelected ? Colors.white : Colors.black,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            fontFamily: 'Pretendard',
+        child: Center(
+          child: Text(
+            text,
+            style: TextStyle(
+              color: isSelected ? Colors.white : const Color(0xFF666666),
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              fontFamily: 'Pretendard',
+            ),
           ),
         ),
       ),
@@ -437,52 +670,120 @@ class _GroupCreateScreenState extends State<GroupCreateScreen> {
   }
 
   Widget _buildCodeDisplay() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF5F5F5),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center, // ← 이 줄 추가/수정!
-        children: [
-          const Text(
-            '발급된 가족 코드',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey,
-              fontFamily: 'Pretendard',
+    return Column(
+      children: [
+        // 성공 아이콘
+        Container(
+          width: 60,
+          height: 60,
+          decoration: BoxDecoration(
+            color: const Color(0xFF8CCAA7).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(30),
+          ),
+          child: const Icon(
+            Icons.check_circle,
+            size: 30,
+            color: Color(0xFF8CCAA7),
+          ),
+        ),
+        const SizedBox(height: 20),
+        
+        const Text(
+          '가족 코드가 생성되었어요! 🎉',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            fontFamily: 'Pretendard',
+            color: Color(0xFF333333),
+          ),
+        ),
+        const SizedBox(height: 24),
+        
+        // 코드 표시 카드
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: const Color(0xFF8CCAA7).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: const Color(0xFF8CCAA7).withOpacity(0.3),
+              width: 1,
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            familyCode ?? '',
-            style: const TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              fontFamily: 'Pretendard',
-              letterSpacing: 2,
-            ),
+          child: Column(
+            children: [
+              const Text(
+                '가족 코드',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Color(0xFF8CCAA7),
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'Pretendard',
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                familyCode ?? '',
+                style: const TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w800,
+                  fontFamily: 'Pretendard',
+                  letterSpacing: 4,
+                  color: Color(0xFF333333),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  familyName ?? '',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'Pretendard',
+                    color: Color(0xFF8CCAA7),
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
-          Text(
-            '가족 그룹명: ${familyName ?? ''}',
-            style: const TextStyle(
-              fontSize: 16,
-              fontFamily: 'Pretendard',
-            ),
+        ),
+        const SizedBox(height: 20),
+        
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8F9FA),
+            borderRadius: BorderRadius.circular(12),
           ),
-          const SizedBox(height: 16),
-          const Text(
-            '이 코드를 가족 구성원들과 공유해주세요.',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey,
-              fontFamily: 'Pretendard',
-            ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.info_outline,
+                size: 20,
+                color: Colors.grey[600],
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '이 코드를 가족 구성원들과 공유해서\n함께 추억을 기록해보세요',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey[600],
+                    fontFamily: 'Pretendard',
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

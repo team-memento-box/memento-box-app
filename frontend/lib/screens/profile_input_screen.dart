@@ -84,6 +84,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
         print('🔄 [Profile] Updating UserProvider...');
         print('🔄 [Profile] Before - fullName: ${userProvider.fullName}');
         print('🔄 [Profile] Before - profileImg: ${userProvider.profileImg}');
+        print('🔄 [Profile] Before - isGuardian: ${userProvider.isGuardian}');
         
         userProvider.setUserFromSupabase(
           id: currentUser.id,
@@ -96,11 +97,13 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
           privacyConsent: true,
           termsAccepted: true,
           onboardingCompleted: false,
+          isGuardian: userProvider.isGuardian, // 기존 isGuardian 값 유지
           accessToken: SupabaseService.client.auth.currentSession?.accessToken,
         );
         
         print('🔄 [Profile] After - fullName: ${userProvider.fullName}');
         print('🔄 [Profile] After - profileImg: ${userProvider.profileImg}');
+        print('🔄 [Profile] After - isGuardian: ${userProvider.isGuardian}');
       }
 
       // 다음 화면으로 이동 - isGuardian 값에 따라 결정
