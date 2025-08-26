@@ -94,8 +94,12 @@ class _KakaoSigninScreenState extends State<KakaoSigninScreen> with WidgetsBindi
     try {
       // arguments에서 userType 강제로 다시 가져오기
       final arguments = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+      print('🔍 Arguments in _handleSuccessfulLogin: $arguments');
       if (arguments != null) {
-        _userType = arguments['userType'] as String?;
+        final newUserType = arguments['userType'] as String?;
+        print('🔍 User type from arguments: $newUserType');
+        print('🔍 Current _userType before update: $_userType');
+        _userType = newUserType;
         print('🔍 User type retrieved in _handleSuccessfulLogin: $_userType');
       } else {
         print('❌ No arguments found in _handleSuccessfulLogin');
@@ -120,12 +124,14 @@ class _KakaoSigninScreenState extends State<KakaoSigninScreen> with WidgetsBindi
       
       // 1. 프로필 존재 여부 확인
       final hasProfile = await UserService.hasUserProfile(user.id);
+      print('🔍 Has profile: $hasProfile, userType: $_userType');
       
       if (!hasProfile) {
         print('🆕 Creating new user profile...');
         
         // 2. 신규 사용자 - 프로필 생성
         final isGuardian = _userType == 'guardian';
+        print('🔍 NEW USER: _userType=$_userType, isGuardian=$isGuardian');
         final userId = await UserService.createOrUpdateUserProfile(
           userId: user.id,
           email: email,
@@ -140,21 +146,21 @@ class _KakaoSigninScreenState extends State<KakaoSigninScreen> with WidgetsBindi
 
         print('✅ Profile created successfully');
 
-        // UserProvider에 사용자 정보 로드
+        // UserProvider에 사용자 정보 로드 및 isGuardian 값 설정
         if (mounted) {
           final userProvider = Provider.of<UserProvider>(context, listen: false);
           await userProvider.loadUserFromSupabase();
+          // userType 기반으로 isGuardian 값 명시적 설정
+          if (_userType != null) {
+            final isGuardianValue = _userType == 'guardian';
+            userProvider.setIsGuardian(isGuardianValue);
+            print('✅ Set UserProvider isGuardian to: $isGuardianValue (based on userType: $_userType)');
+          }
         }
 
         if (mounted) {
-          print('🧭 Navigation decision: userType=$_userType, isGuardian=$isGuardian');
-          if (isGuardian) {
-            print('🧭 Guardian: 0-3-1 -> 0-3-1-1 -> intro');
-            Navigator.pushNamed(context, '/0-3-1');
-          } else {
-            print('🧭 Dependent: 0-3-2 -> intro');
-            Navigator.pushNamed(context, '/0-3-2');
-          }
+          print('🧭 New user: navigating to profile input screen');
+          Navigator.pushNamed(context, '/profile-input');
         }
       } else {
         print('👋 Existing user login');
@@ -167,6 +173,11 @@ class _KakaoSigninScreenState extends State<KakaoSigninScreen> with WidgetsBindi
               .update({'is_guardian': isGuardian})
               .eq('id', user.id);
           print('✅ Updated existing user is_guardian to: $isGuardian');
+          
+          // UserProvider의 isGuardian 값도 업데이트
+          final userProvider = Provider.of<UserProvider>(context, listen: false);
+          userProvider.setIsGuardian(isGuardian);
+          print('✅ Updated UserProvider isGuardian to: $isGuardian');
         }
         
         // 기존 사용자 - 온보딩 상태 확인
@@ -191,13 +202,8 @@ class _KakaoSigninScreenState extends State<KakaoSigninScreen> with WidgetsBindi
             print('🧭 Existing user: Direct to home');
             Navigator.pushNamed(context, '/home');
           } else {
-            if (shouldGoToGuardianFlow) {
-              print('🧭 Guardian: 0-3-1 -> 0-3-1-1 -> intro');
-              Navigator.pushNamed(context, '/0-3-1');
-            } else {
-              print('🧭 Dependent: 0-3-2 -> intro');
-              Navigator.pushNamed(context, '/0-3-2');
-            }
+            print('🧭 Existing user: navigating to profile input screen');
+            Navigator.pushNamed(context, '/profile-input');
           }
         }
       }

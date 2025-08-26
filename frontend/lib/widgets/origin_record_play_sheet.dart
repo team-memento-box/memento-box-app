@@ -3,11 +3,14 @@ import '../utils/styles.dart';
 import 'ai_record_play_sheet.dart';
 import 'audio_player_widget.dart';
 import '../utils/audio_service.dart';
+import '../core/supabase_service.dart';
+import '../models/report.dart';
 
 void showOriginalModal(
   BuildContext context, {
   required String audioPath,
   required AudioService audioService,
+  String? sessionId,
 }) {
   print('📢 원본 시트 불러오기');
   showModalBottomSheet(
@@ -18,18 +21,20 @@ void showOriginalModal(
       borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
     ),
     builder: (_) =>
-        OriginalModal(audioPath: audioPath, audioService: audioService),
+        OriginalModal(audioPath: audioPath, audioService: audioService, sessionId: sessionId),
   );
 }
 
 class OriginalModal extends StatefulWidget {
   final String audioPath;
   final AudioService audioService;
+  final String? sessionId;
 
   const OriginalModal({
     super.key,
     required this.audioPath,
     required this.audioService,
+    this.sessionId,
   });
 
   @override
@@ -39,6 +44,38 @@ class OriginalModal extends StatefulWidget {
 class _OriginalModalState extends State<OriginalModal>
     with SingleTickerProviderStateMixin {
   bool showAllTranscript = false;
+  List<ConversationData>? conversations;
+  bool isLoading = false;
+
+  Future<void> fetchConversations() async {
+    if (widget.sessionId == null) return;
+    
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      final response = await SupabaseService.client
+          .from('conversations')
+          .select('*')
+          .eq('session_id', widget.sessionId!)
+          .order('conversation_order', ascending: true);
+
+      final conversationList = response
+          .map((json) => ConversationData.fromJson(json))
+          .toList();
+
+      setState(() {
+        conversations = conversationList;
+        isLoading = false;
+      });
+    } catch (e) {
+      print('❌ Error fetching conversations: $e');
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -79,6 +116,8 @@ class _OriginalModalState extends State<OriginalModal>
                             context,
                             audioPath: widget.audioPath,
                             audioService: widget.audioService,
+                            summaryText: null,
+                            createdAt: null,
                           ); // 새 모달 열기
                         }
                       });
@@ -134,6 +173,7 @@ class _OriginalModalState extends State<OriginalModal>
                     width: double.infinity, // 너비만 확장하고 싶을 때
                     child: ElevatedButton(
                       onPressed: () {
+                        fetchConversations();
                         setState(() => showAllTranscript = true);
                       },
                       style: ElevatedButton.styleFrom(
@@ -173,27 +213,34 @@ class _OriginalModalState extends State<OriginalModal>
                       ),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: ListView(
-                      padding: const EdgeInsets.symmetric(horizontal: 5),
-                      children: [
-                        _chatBubble("이 사진 언제 찍었는지 기억 나세요?", isBot: true),
-                        _chatBubble("응 당연하지~ 국민 학교 다닐 적이었을 거야"),
-                        _chatBubble(
-                          "와 아주 옛날 일까지 기억하고 계시네요 대단해요! 그때 무슨 일이 있었는지 말씀해주실 수 있나요?",
-                          isBot: true,
-                        ),
-                        _chatBubble("친구들, 저 짝 삼승리 넘어 동네 친구들이"),
-                        _chatBubble("삼삼오오 다같이 모여 가지고는 공기놀이를 했어"),
-                        _chatBubble("그때는 내가 영 실력이 파이야 벌칙에 제일 많이 걸렸어"),
-                        _chatBubble(
-                          "친구들과 공기놀이라니! 너무 재미있었을 것 같아요. 공기놀이에 져서 어떤 벌칙을 주로 받으셨어요?",
-                          isBot: true,
-                        ),
-                        _chatBubble(
-                          "콧수염 붙이기였어~ 아유 지금 생각해도 너무 웃겨. 그때 아주 영히하고 민속히하고 배꼽을 잡고 웃었는데",
-                        ),
-                      ],
-                    ),
+                    child: isLoading
+                        ? const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(20.0),
+                              child: CircularProgressIndicator(
+                                color: Color(0xFF8CCAA7),
+                              ),
+                            ),
+                          )
+                        : ListView(
+                            padding: const EdgeInsets.symmetric(horizontal: 5),
+                            children: conversations != null
+                                ? _buildConversationBubbles()
+                                : [
+                                    const Padding(
+                                      padding: EdgeInsets.all(20.0),
+                                      child: Center(
+                                        child: Text(
+                                          '대화 내용을 불러올 수 없습니다.',
+                                          style: TextStyle(
+                                            color: Colors.grey,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                          ),
                   ),
                 const SizedBox(height: 20),
               ],
@@ -202,6 +249,23 @@ class _OriginalModalState extends State<OriginalModal>
         ],
       ),
     );
+  }
+  
+  List<Widget> _buildConversationBubbles() {
+    if (conversations == null) return [];
+    
+    final bubbles = <Widget>[];
+    for (final conversation in conversations!) {
+      // AI 질문
+      bubbles.add(_chatBubble(conversation.questionText, isBot: true));
+      
+      // 사용자 응답 (텍스트가 있는 경우에만)
+      if (conversation.userResponseText != null && 
+          conversation.userResponseText!.isNotEmpty) {
+        bubbles.add(_chatBubble(conversation.userResponseText!));
+      }
+    }
+    return bubbles;
   }
 }
 

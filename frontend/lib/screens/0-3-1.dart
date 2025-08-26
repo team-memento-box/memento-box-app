@@ -19,89 +19,219 @@ class GroupSelectScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Column(
-          children: [
-            // 상단 시계/상태바 영역 (간단히 텍스트로 대체)
-            
-            const SizedBox(height: 200),
-            // 안내 문구
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 30.0),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: MediaQuery.of(context).size.height - 
+                          MediaQuery.of(context).padding.top - 
+                          MediaQuery.of(context).padding.bottom,
+              ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center, // 가운데 정렬
                 children: [
-                  // 1. 이미지 추가
-                  Image.asset(
-                    'assets/images/mori.png',
-                    width: 200, // 원하는 크기로 조절
-                    height: 200,
-                    fit: BoxFit.contain,
-                  ),
-                  const SizedBox(height: 16), // 이미지와 텍스트 사이 간격
-                  // 2. 안내 문구
-                  Consumer<UserProvider>(
-                    builder: (context, userProvider, child) => Text(
-                      '안녕하세요 ${userProvider.name}님,',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.black,
-                        fontSize: 21,
-                        fontFamily: 'Pretendard',
-                        fontWeight: FontWeight.w500,
-                        height: 1.19,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '저와 함께 기억여행을 시작해볼까요?',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.black,
-                      fontSize: 19,
-                      fontFamily: 'Pretendard',
-                      fontWeight: FontWeight.w500,
-                      height: 1.42,
-                      letterSpacing: -1,
-                    ),
-                  ),
+                  const SizedBox(height: 40),
+                  _buildHeader(),
+                  const SizedBox(height: 60),
+                  _buildContentCard(context),
+                  const SizedBox(height: 40),
+                  _buildHomeIndicator(),
+                  const SizedBox(height: 20),
                 ],
               ),
             ),
-            const SizedBox(height: 32),
-            // 가족 그룹 생성하기 버튼
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 30.0),
-              child: SizedBox(
-                width: double.infinity,
-                height: 60,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFDFF3F2),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    elevation: 0,
-                  ),
-                  onPressed: () {
-                    Navigator.pushNamed(context, '/0-3-1-1');
-                  },
-                  child: const Text(
-                    '기억여행 시작하기',
-                    style: TextStyle(
-                      color: Color(0xFF8CCAA7),
-                      fontSize: 20,
-                      fontFamily: 'Pretendard',
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Column(
+      children: [
+        Container(
+          width: 120,
+          height: 120,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF8CCAA7).withOpacity(0.2),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: Image.asset(
+              "assets/images/temp_logo.png",
+              fit: BoxFit.cover,
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        const Text(
+          'MEMENTO BOX',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+            fontFamily: 'Pretendard',
+            color: Color(0xFF8CCAA7),
+            letterSpacing: 2,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildContentCard(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+        border: Border.all(
+          color: const Color(0xFF8CCAA7).withOpacity(0.1),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        children: [
+          _buildWelcomeText(),
+          const SizedBox(height: 40),
+          _buildStartButton(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWelcomeText() {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF8CCAA7).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: const Text(
+            '🎉 환영합니다 보호자님',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              fontFamily: 'Pretendard',
+              color: Color(0xFF8CCAA7),
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+        Consumer<UserProvider>(
+          builder: (context, userProvider, child) => Text(
+            '안녕하세요 ${userProvider.name ?? userProvider.fullName ?? '보호자'}님,',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+              fontFamily: 'Pretendard',
+              color: Color(0xFF333333),
+              height: 1.4,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        const Text(
+          '소중한 가족과 함께하는\n기억여행을 시작해보세요',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+            fontFamily: 'Pretendard',
+            color: Color(0xFF666666),
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          '가족만의 추억 보관함을 만들어\n특별한 순간들을 함께 기록해보세요',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w400,
+            fontFamily: 'Pretendard',
+            color: Colors.grey[600],
+            height: 1.4,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStartButton(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      height: 56,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF8CCAA7).withOpacity(0.4),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: ElevatedButton(
+        onPressed: () {
+          Navigator.pushNamed(context, '/0-3-1-1');
+        },
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF8CCAA7),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          elevation: 0,
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.auto_awesome,
+              color: Colors.white,
+              size: 20,
+            ),
+            SizedBox(width: 8),
+            Text(
+              '기억여행 시작하기',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                fontFamily: 'Pretendard',
               ),
             ),
-            
-            // 하단 홈 인디케이터
-            
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHomeIndicator() {
+    return Center(
+      child: Container(
+        width: 134,
+        height: 4,
+        decoration: BoxDecoration(
+          color: Colors.grey[400],
+          borderRadius: BorderRadius.circular(2),
         ),
       ),
     );

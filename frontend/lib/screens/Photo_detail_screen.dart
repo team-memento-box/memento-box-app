@@ -15,6 +15,7 @@ import '../widgets/audio_player_widget.dart';
 import '../models/photo.dart'; // ← Photo 모델 import 추가
 import 'package:provider/provider.dart'; // ✅ Provider import
 import '../user_provider.dart'; // ✅ 사용자 Provider import
+import '../core/supabase_service.dart'; // ✅ Supabase 서비스 import
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -213,14 +214,56 @@ class _PhotoDetailScreenState extends State<PhotoDetailScreen> {
                       child: isGuardian
                           ? ElevatedButton(
                               onPressed: () async {
-                                final result = await fetchSummaryAndOriginVoice(widget.photoData['photo_id']);
-                                showSummaryModal(
-                                context,
-                                audioPath: result['summary_voice'] ?? '',
-                                audioService: _audioService,
-                                summaryText: result['summaryText'],
-                                createdAt: result['createdAt'],
-                              );
+                                final storyData = await fetchPhotoStory(widget.photoData['photo_id']);
+                                if (storyData != null) {
+                                  String audioUrl = '';
+                                if (storyData['tts_audio_path'] != null) {
+                                  String pathInDb = storyData['tts_audio_path'];
+                                  print('Original audio path: $pathInDb');
+                                  
+                                  // 'fishspeech/' 프리픽스 제거 → 오브젝트 키
+                                  final objectKey = pathInDb.startsWith('fishspeech/')
+                                      ? pathInDb.substring('fishspeech/'.length)
+                                      : pathInDb;
+                                  print('Object key: $objectKey');
+                                  
+                                  // 서명 URL 생성 (60초 유효)
+                                  try {
+                                    audioUrl = await SupabaseService.client.storage
+                                        .from('fishspeech')
+                                        .createSignedUrl(objectKey, 60);
+                                    print('Generated signed URL: $audioUrl');
+                                  } catch (e) {
+                                    print('Signed URL 생성 실패: $e');
+                                  }
+                                }
+                                  // source_session_ids에서 첫 번째 세션 ID 가져오기
+                                  String? sessionId;
+                                  if (storyData['source_session_ids'] != null && 
+                                      (storyData['source_session_ids'] as List).isNotEmpty) {
+                                    sessionId = (storyData['source_session_ids'] as List)[0];
+                                  }
+                                  
+                                  showSummaryModal(
+                                    context,
+                                    audioPath: audioUrl,
+                                    audioService: _audioService,
+                                    summaryText: storyData['story_text'],
+                                    createdAt: storyData['created_at'],
+                                    sessionId: sessionId,
+                                  );
+                                } else {
+                                  // 스토리가 없으면 기존 방식 사용
+                                  final result = await fetchSummaryAndOriginVoice(widget.photoData['photo_id']);
+                                  showSummaryModal(
+                                    context,
+                                    audioPath: result['summary_voice'] ?? '',
+                                    audioService: _audioService,
+                                    summaryText: result['summaryText'],
+                                    createdAt: result['createdAt'],
+                                    sessionId: null,
+                                  );
+                                }
                               },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF8CCAA7),
@@ -405,6 +448,102 @@ class _PhotoDetailScreenState extends State<PhotoDetailScreen> {
       default:
         return eng;
     }
+  }
+
+  // 포토 스토리 데이터 가져오기 (Supabase)
+  Future<Map<String, dynamic>?> fetchPhotoStory(String photoId) async {
+    print('fetchPhotoStory 호출됨 - photoId: $photoId');
+    try {
+      final response = await SupabaseService.client
+          .from('photo_stories')
+          .select()
+          .eq('photo_id', photoId)
+          .order('created_at', ascending: false)
+          .limit(1);
+
+      if (response.isNotEmpty) {
+        print('포토 스토리 데이터 가져오기 성공: ${response.first}');
+        return response.first as Map<String, dynamic>;
+      } else {
+        print('해당 photo_id에 대한 스토리가 없습니다.');
+        return null;
+      }
+    } catch (e) {
+      print('fetchPhotoStory 에러: $e');
+      return null;
+    }
+  }
+
+  // 스토리 텍스트를 보여주는 모달
+  void _showStoryTextModal(BuildContext context, String storyText, String title) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        maxChildSize: 0.9,
+        minChildSize: 0.3,
+        builder: (context, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              // 핸들
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              // 제목
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        fontFamily: 'Pretendard',
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(),
+              // 스토리 텍스트
+              Expanded(
+                child: SingleChildScrollView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.all(20),
+                  child: Text(
+                    storyText,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontFamily: 'Pretendard',
+                      height: 1.6,
+                      color: Color(0xFF333333),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<Map<String, String?>> fetchSummaryAndOriginVoice(String photoId) async {

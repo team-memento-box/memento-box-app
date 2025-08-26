@@ -30,6 +30,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   app_links: ^6.0.0
   supabase_flutter: ^2.3.4       # ✅ Supabase 클라이언트 (DB, Auth, Storage)
   kakao_flutter_sdk_user: ^1.4.2 # ✅ (선택) 카카오 API 직접 호출할 때만 필요 (예: 프로필)
@@ -73,6 +75,9 @@ flutter:
   assets:
     - assets/images/temp_logo.png
     - assets/images/chatbot_profile.png
+    - assets/images/brain.png
+    - assets/images/chat.png
+    - assets/images/triangle.png
     - assets/photos/
     - assets/icons/
     - assets/fonts/
@@ -103,3 +108,17 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+  
+  fonts:
+    - family: Pretendard
+      fonts:
+        - asset: assets/fonts/Pretendard-Regular.otf
+          weight: 400
+        - asset: assets/fonts/Pretendard-Medium.otf
+          weight: 500
+        - asset: assets/fonts/Pretendard-SemiBold.otf
+          weight: 600
+        - asset: assets/fonts/Pretendard-Bold.otf
+          weight: 700
+        - asset: assets/fonts/Pretendard-ExtraBold.otf
+          weight: 800

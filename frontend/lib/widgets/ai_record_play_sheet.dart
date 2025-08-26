@@ -12,6 +12,7 @@ void showSummaryModal(
   required AudioService audioService,
   String? summaryText,
   String? createdAt,
+  String? sessionId,
 }) {
   showModalBottomSheet(
     context: context,
@@ -24,7 +25,8 @@ void showSummaryModal(
         SummaryModal(audioPath: audioPath, 
         audioService: audioService, 
         summaryText: summaryText, 
-        createdAt: createdAt
+        createdAt: createdAt,
+        sessionId: sessionId
       ),
   );
 }
@@ -34,6 +36,7 @@ class SummaryModal extends StatefulWidget {
   final AudioService audioService;
   final String? summaryText;
   final String? createdAt;
+  final String? sessionId;
 
   const SummaryModal({
     super.key,
@@ -41,6 +44,7 @@ class SummaryModal extends StatefulWidget {
     required this.audioService,
     this.summaryText,
     this.createdAt,
+    this.sessionId,
   });
 
   @override
@@ -145,6 +149,7 @@ class _SummaryModalState extends State<SummaryModal>
                                       context,
                                       audioPath: widget.audioPath,
                                       audioService: widget.audioService,
+                                      sessionId: widget.sessionId,
                                     ); // 새 모달 열기
                                   }
                                 },

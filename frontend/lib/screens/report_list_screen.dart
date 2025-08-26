@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
-import '../data/user_data.dart';
 import '../utils/styles.dart';
 import '../widgets/tap_widget.dart';
 import '../widgets/group_bar_widget.dart';
-import 'report_detail_screen.dart'; // ReportDetailScreen import 추가
+import 'report_main.dart';
 import 'package:provider/provider.dart';
 import '../user_provider.dart';
 import '../data/report_api.dart';
@@ -31,7 +30,13 @@ class _ReportListScreenState extends State<ReportListScreen> {
   Future<void> _loadReports() async {
     setState(() => isLoading = true);
     try {
-      final accessToken = Provider.of<UserProvider>(context, listen: false).accessToken;
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      final accessToken = userProvider.accessToken;
+      final currentUserId = userProvider.id;
+      
+      print('==== [DEBUG] AccessToken: ${accessToken != null ? 'EXISTS' : 'NULL'}');
+      print('==== [DEBUG] Current User ID: ${currentUserId ?? 'NULL'}');
+      
       if (accessToken == null) {
         print('==== [DEBUG] No accessToken found!');
         setState(() {
@@ -40,10 +45,11 @@ class _ReportListScreenState extends State<ReportListScreen> {
         });
         return;
       }
+      
       final result = await ReportApi.fetchReports(accessToken);
-      print('==== [DEBUG] _loadReports result.length: [32m${result.length}[0m');
+      print('==== [DEBUG] _loadReports result.length: ${result.length}');
       for (var i = 0; i < result.length; i++) {
-        print('==== [DEBUG] _loadReports report[$i]: anomalyReport=${result[i].anomalyReport}, created_at=${result[i].created_at}');
+        print('==== [DEBUG] _loadReports report[$i]: id=${result[i].id}, created_at=${result[i].createdAt}');
       }
       setState(() {
         reports = result;
@@ -55,7 +61,9 @@ class _ReportListScreenState extends State<ReportListScreen> {
         reports = [];
         isLoading = false;
       });
-      // 에러 처리(토스트 등)
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('보고서를 불러오는 중 오류가 발생했습니다: $e')),
+      );
     }
   }
 
@@ -283,15 +291,15 @@ class ReportListWidget extends StatelessWidget {
             final report = reports[index];
             // created_at을 yyyy-MM-dd HH:mm 포맷으로 변환
             String formattedDate = '';
-            if (report.created_at != null) {
-              final date = report.created_at;
+            if (report.createdAt != null) {
+              final date = report.createdAt;
               formattedDate =
-                  '${date!.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+                  '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
             }
             return ReportItemWidget(
               isSelected: index == 0,
-              displayTitle: formattedDate.isNotEmpty ? '$formattedDate 대화 분석 보고서' : '대화 분석 보고서',
-              createdAt: report.created_at?.toString() ?? '',
+              displayTitle: formattedDate.isNotEmpty ? '$formattedDate 가족 구성원 대화 분석 보고서' : '가족 구성원 대화 분석 보고서',
+              createdAt: report.createdAt.toString(),
               report: report,
               allReports: reports,
               currentIndex: index,
@@ -326,18 +334,10 @@ class ReportItemWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        // 상세 보고서 화면으로 이동하면서 전체 리포트 목록과 현재 인덱스도 전달
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => ReportDetailScreen(
-              // 상세화면에 필요한 정보 전달 (예시)
-              fileName: displayTitle,
-              filePath: '', // asset 기반이 아니므로 빈 값
-              allReports: allReports,
-              currentIndex: currentIndex,
-              reportId: report.reportId,
-            ),
+            builder: (context) => ReportMainScreen(report: report),
           ),
         );
       },
