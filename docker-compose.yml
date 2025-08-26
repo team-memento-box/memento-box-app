@@ -32,64 +32,7 @@ services:
         networks:
             - memento_net
 
-    db:
-        image: postgres:15
-        container_name: postgres_db
-        restart: always
-        ports:
-            - "5432:5432"
-        environment:
-            POSTGRES_USER: ${POSTGRES_USER}
-            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-            POSTGRES_DB: ${POSTGRES_DB}
-        healthcheck:
-            test:
-                [
-                    "CMD-SHELL",
-                    "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}",
-                ]
-            interval: 5s
-            timeout: 5s
-            retries: 5
-        volumes:
-            - fastapi-app_pgdata:/var/lib/postgresql/data
-        networks:
-            - memento_net
-
-    # dialogue:
-    #   build:
-    #     context: ./dialogue
-    #   container_name: dialogue
-    #   expose:
-    #     - "6060"
-    #   env_file:
-    #     - ./dialogue/.env
-    #   networks:
-    #     - memento_net
-    #   depends_on:
-    #     db:
-    #       condition: service_healthy
-
-    # fish-speech:
-    #   build:
-    #     context: ./fish-speech
-    #     dockerfile: Dockerfile
-    #   container_name: fish-speech
-    #   expose:
-    #     - "5000"
-    #   volumes:
-    #     - ./fish-speech/checkpoints:/app/checkpoints
-    #     - ./shared/input_wav:/app/input_wav
-    #     - ./shared/output_wav:/app/output_wav
-    #     - ./shared/model_output:/app/model_output
-    #   runtime: nvidia
-    #   environment:
-    #     - NVIDIA_VISIBLE_DEVICES=all
-    #   networks:
-    #     - memento_net
-    #   depends_on:
-    #     db:
-    #       condition: service_healthy
+    
 
 volumes:
     fastapi-app_pgdata:

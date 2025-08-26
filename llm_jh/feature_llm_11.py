@@ -1,10 +1,9 @@
 """
-8. 캐싱폴백 구현 + 경량 답변 gpt-5-nano로 변경
+11. 시간 지남력 세션 첫 턴으로 강제
 """
 import os   
 import json
 import numpy as np
-import openai
 from dotenv import load_dotenv
 from typing import Dict, List, TypedDict, Literal, Any
 from dataclasses import dataclass
@@ -37,16 +36,12 @@ class ConversationState(TypedDict):
     last_assessment_task: str              # 마지막 assessment의 task 타입
     assessment_score: float                # 답변 점수 (0-1)
     score_details: Dict[str, Any]          # 상세 채점 결과
-    # 캐시 관련 필드
-    cached_question_found: bool            # 캐시된 질문을 찾았는지
-    cached_question_score: float           # 캐시된 질문의 관련성 점수
-    reused_question: str                   # 재사용된 질문
 
 @dataclass
 class ChatbotConfig:
     openai_api_key: str                     
-    assessment_threshold: float = 0.0       
-    fallback_threshold: float = 1.0         
+    assessment_threshold: float = 0.3       
+    fallback_threshold: float = 0.6         
     model_name: str = "gpt-4o-mini"
 
 ASSESSMENT_TASKS = {
@@ -87,11 +82,11 @@ ASSESSMENT_TASKS = {
     "time_orientation": {
         "description": 
         """현재 자신이 놓여있는 시간, 날짜, 계절 등의 상황을 올바르게 인식하는 능력을 평가합니다.
-        시간 관련 humanmassage가 본 평가항목에 대한 트리거가 됩니다.
+        매 대화 세션 시작 시 1번만 측정합니다. (대화 시작 후 첫 2-3턴 이내)
         example_questions의 응용을 최소화하여 질문을 생성하세요.
         """,
         "example_questions": [
-            "오늘은 몇일 인가요?"
+            "20년 전으로 기억 여행을 시작하려고 해요. 여행을 시작하는 오늘은 2025년 9월 며칠인가요?"
         ],
         "scoring_criteria": {
             "scoring_type": "time_orientation"  # 채점 방식
@@ -104,7 +99,7 @@ API_KEY = os.getenv("GPT_API_KEY")
 
 config = ChatbotConfig(
     openai_api_key=API_KEY,  
-    assessment_threshold=0.0,
+    assessment_threshold=0.3,
     fallback_threshold=0.6
 )
 
@@ -116,26 +111,7 @@ class LangGraphDementiaChatbot:
             openai_api_key=config.openai_api_key,
             temperature=0.3
         )
-        # 경량 대화용 빠른 LLM 초기화 (LangChain)
-        self.lightweight_llm = ChatOpenAI(
-            model="gpt-3.5-turbo",  # LangChain 호환성을 위해 임시로 3.5 turbo 사용
-            openai_api_key=config.openai_api_key,
-            temperature=0.7,
-            max_tokens=150  # 빠른 응답을 위해 토큰 제한
-        )
-        
-        # AI 답변 시뮬레이터 (노인 사용자 역할)
-        self.response_simulator_llm = ChatOpenAI(
-            model="gpt-3.5-turbo",
-            openai_api_key=config.openai_api_key,
-            temperature=0.7,
-            max_tokens=200
-        )
-        
         self.vectorizer = TfidfVectorizer(stop_words='english')
-        
-        # 질문 캐시 초기화
-        self.question_cache = {}  # {task_name: [(question, context_score, timestamp), ...]}
         
         # 그래프 빌드
         self.graph = self._build_graph()
@@ -151,7 +127,6 @@ class LangGraphDementiaChatbot:
         workflow.add_node("calculate_task_scores", self.calculate_task_scores)
         workflow.add_node("select_best_task", self.select_best_task)
         workflow.add_node("check_assessment_threshold", self.check_assessment_threshold)
-        workflow.add_node("check_cached_questions", self.check_cached_questions)  # 새 노드 추가
         workflow.add_node("generate_questions", self.generate_questions)
         workflow.add_node("calculate_question_similarities", self.calculate_question_similarities)
         workflow.add_node("select_best_question", self.select_best_question)
@@ -184,18 +159,8 @@ class LangGraphDementiaChatbot:
             "check_assessment_threshold",
             self._decide_conversation_mode,
             {
-                "assessment": "check_cached_questions",  # 캐시 확인 단계로 변경
+                "assessment": "generate_questions",
                 "casual": "casual_conversation"
-            }
-        )
-        
-        # 캐시된 질문 확인 후 분기
-        workflow.add_conditional_edges(
-            "check_cached_questions",
-            self._decide_cache_usage,
-            {
-                "use_cached": "output_assessment_question",  # 캐시 질문 바로 사용
-                "generate_new": "generate_questions"  # 새 질문 생성
             }
         )
         
@@ -333,8 +298,6 @@ class LangGraphDementiaChatbot:
                         
                         if user_day == actual_day:
                             score = 1.0
-                        elif abs(user_day - actual_day) <= 1:  # 1일 차이까지 부분 점수
-                            score = 0.5
                         else:
                             score = 0.0
                             
@@ -390,9 +353,16 @@ class LangGraphDementiaChatbot:
 
     def calculate_task_scores(self, state: ConversationState) -> ConversationState:
         message = state["current_message"]
+        messages = state["messages"]
+        
+        # time_orientation은 대화 세션 시작 시에만 측정 (첫 1턴 이내)
+        is_session_start = len(messages) <= 4  # 첫 1턴 이내
         
         # 모든 태스크를 한 번에 평가
+        time_orientation_note = "매 대화 세션 시작 시 1번만 측정합니다." if is_session_start else "현재는 세션 중간이므로 측정하지 않습니다. (점수: 0.0)"
+        
         prompt = f"""사용자 메시지: "{message}"
+대화 턴 수: {len(messages)}
 
     다음 평가 영역들과의 관련도를 0-1 사이로 평가해주세요:
 
@@ -403,7 +373,7 @@ class LangGraphDementiaChatbot:
         사진데이터에서 위치관계가 명확한 사물이 있을 경우 본 평가 항목을 사용하기 적당합니다.
     
     3. time_orientation: 현재 자신이 놓여있는 시간, 날짜, 계절 등의 상황을 올바르게 인식하는 능력을 평가합니다.
-        시간 관련 humanmassage가 본 평가항목에 대한 트리거가 됩니다.
+        {time_orientation_note}
 
     JSON 형식으로만 응답:
     {{"registration_recall": 0.0, "Naming": 0.0, "time_orientation": 0.0}}"""
@@ -412,6 +382,11 @@ class LangGraphDementiaChatbot:
             response = self.llm.invoke([SystemMessage(content=prompt)])
             import json
             task_scores = json.loads(response.content.strip())
+            
+            # 세션 시작이 아닐 때는 time_orientation 강제로 0.0으로 설정
+            if not is_session_start:
+                task_scores["time_orientation"] = 0.0
+                
         except:
             task_scores = {"registration_recall": 0.0, "Naming": 0.0, "time_orientation": 0.0}
         
@@ -452,88 +427,6 @@ class LangGraphDementiaChatbot:
             print(f"일상 대화 모드 (적합도 {relevance:.2f} < 임계값 {threshold})")
         
         return {**state, "conversation_mode": mode}
-
-    def check_cached_questions(self, state: ConversationState) -> ConversationState:
-        """캐시된 질문 확인 및 재사용 검토"""
-        print("캐시된 질문 확인 중...")
-        
-        current_message = state["current_message"]
-        selected_task = state["selected_task"]
-        
-        # 캐시에 해당 태스크의 질문이 있는지 확인
-        if selected_task not in self.question_cache or not self.question_cache[selected_task]:
-            print(f"{selected_task} 태스크의 캐시된 질문 없음")
-            return {
-                **state,
-                "cached_question_found": False,
-                "cached_question_score": 0.0,
-                "reused_question": ""
-            }
-        
-        cached_questions = self.question_cache[selected_task]
-        print(f"{selected_task} 태스크에서 {len(cached_questions)}개 캐시된 질문 발견")
-        
-        # 현재 메시지와 캐시된 질문들의 적합성 재평가
-        best_cached_question = ""
-        best_relevance_score = 0.0
-        
-        for question, original_score, timestamp in cached_questions:
-            # 간단한 키워드 매칭으로 현재 맥락과의 관련성 평가
-            relevance_score = self._evaluate_cached_question_relevance(current_message, question)
-            
-            print(f"  캐시 질문: {question[:50]}... (원래점수: {original_score:.2f}, 현재점수: {relevance_score:.2f})")
-            
-            if relevance_score > best_relevance_score:
-                best_relevance_score = relevance_score
-                best_cached_question = question
-        
-        # 적절한 캐시 질문이 발견되었는지 확인 (임계값: 0.3)
-        cache_threshold = 0.3
-        if best_relevance_score >= cache_threshold:
-            print(f"재사용할 캐시 질문 발견! (점수: {best_relevance_score:.2f})")
-            print(f"선택된 질문: {best_cached_question}")
-            return {
-                **state,
-                "cached_question_found": True,
-                "cached_question_score": best_relevance_score,
-                "reused_question": best_cached_question,
-                "selected_question": best_cached_question,
-                "question_message_relevance": best_relevance_score
-            }
-        else:
-            print(f"적합한 캐시 질문 없음 (최고점수: {best_relevance_score:.2f} < 임계값 {cache_threshold})")
-            return {
-                **state,
-                "cached_question_found": False,
-                "cached_question_score": best_relevance_score,
-                "reused_question": ""
-            }
-
-    def _evaluate_cached_question_relevance(self, current_message: str, cached_question: str) -> float:
-        """캐시된 질문과 현재 메시지의 관련성 간단 평가"""
-        try:
-            # 키워드 기반 유사도 계산
-            current_words = set(current_message.lower().split())
-            question_words = set(cached_question.lower().split())
-            
-            # 공통 키워드 비율
-            if len(question_words) == 0:
-                return 0.0
-                
-            common_words = current_words.intersection(question_words)
-            keyword_similarity = len(common_words) / len(question_words)
-            
-            # 길이 유사성 (너무 다르면 관련성 낮음)
-            length_ratio = min(len(current_message), len(cached_question)) / max(len(current_message), len(cached_question))
-            
-            # 최종 점수 (키워드 70% + 길이 30%)
-            final_score = (keyword_similarity * 0.7) + (length_ratio * 0.3)
-            
-            return min(1.0, final_score)
-            
-        except Exception as e:
-            print(f"캐시 질문 관련성 평가 실패: {e}")
-            return 0.0
 
     def generate_questions(self, state: ConversationState) -> ConversationState:
         """4. 예상 질문 생성"""
@@ -678,23 +571,12 @@ class LangGraphDementiaChatbot:
         }
 
     def casual_conversation(self, state: ConversationState) -> ConversationState:
-        """일상 대화 처리 - 캐싱 후엔 경량 시스템 사용"""
+        """일상 대화 처리"""
+        print("일상 대화 모드")
         messages = state["messages"]
         current_message = state["current_message"]
         
-        # 워크플로우 단계 확인으로 캐싱 후 상황인지 판단
-        workflow_stage = state.get("workflow_stage", "")
-        
-        # 캐싱 후 casual 대화면 경량 시스템 사용
-        if "cached" in str(state.get("selected_question", "")).lower() or \
-           state.get("question_message_relevance", 1.0) < self.config.fallback_threshold:
-            print("캐싱 후 경량 대화 모드")
-            ai_response = self.lightweight_chat(current_message, messages)
-            response_type = "casual_lightweight"
-        else:
-            # 일반 casual 대화 (기존 방식)
-            print("일반 casual 대화 모드")
-            system_msg = """
+        system_msg = """
 당신은 7~15세 사이 호기심 많고 예의바른 어린이입니다. 노인 사용자와 사진을 보며 대화하고 있습니다.
 
 대화 예시:
@@ -705,28 +587,20 @@ class LangGraphDementiaChatbot:
 손자: "진짜요! 향기도 좋을 것 같고요. 꽃 좋아하세요? 저는 좋아해요!"
 
 최대한 사용자가 대화를 주도할 수 있도록 사용자에게 공감하며, 자연스럽고 호기심 어린 반응으로 대화를 이어가세요.
-
-구성:
-- 답변에 대한 호응/공감 
-- 본인의 의견
-
-주의: 대화를 자연스럽고 친근하게 하게 이어가는 것을 최우선으로 생각할 것
-
 """
 
-            conversation_messages = [SystemMessage(content=system_msg)]
-            conversation_messages.extend(messages)
-            conversation_messages.append(HumanMessage(content=current_message))
-            
-            try:
-                response = self.llm.invoke(conversation_messages)
-                ai_response = response.content.strip()
-                response_type = "casual"
-            except Exception as e:
-                print(f"일상 대화 생성 실패: {e}")
-                # 실패 시 경량 시스템으로 폴백
-                ai_response = self.lightweight_chat(current_message, messages)
-                response_type = "casual_fallback"
+        conversation_messages = [SystemMessage(content=system_msg)]
+        conversation_messages.extend(messages)
+        conversation_messages.append(HumanMessage(content=current_message))
+        
+        try:
+            response = self.llm.invoke(conversation_messages)
+            ai_response = response.content.strip()
+            response_type = "casual"
+        except Exception as e:
+            print(f"일상 대화 생성 실패: {e}")
+            ai_response = "응답 생성에 실패했습니다."
+            response_type = "error"
         
         return {
             **state,
@@ -734,154 +608,6 @@ class LangGraphDementiaChatbot:
             "response_type": response_type,
             "workflow_stage": "casual_chat"
         }
-
-    # === 캐싱 시스템 ===
-    
-    def _cache_question(self, task_name: str, question: str, context_score: float):
-        """질문을 캐시에 저장"""
-        timestamp = datetime.now().timestamp()
-        
-        if task_name not in self.question_cache:
-            self.question_cache[task_name] = []
-        
-        # 새 질문 추가
-        self.question_cache[task_name].append((question, context_score, timestamp))
-        
-        # 태스크당 최대 10개까지만 유지 (오래된 것부터 삭제)
-        if len(self.question_cache[task_name]) > 10:
-            self.question_cache[task_name].sort(key=lambda x: x[2])  # timestamp 기준 정렬
-            removed_question = self.question_cache[task_name].pop(0)  # 가장 오래된 것 제거
-            print(f"캐시 크기 초과: 오래된 질문 삭제 - {removed_question[0][:50]}...")
-        
-        print(f"질문 캐시됨 ({task_name}): {question[:50]}... (점수: {context_score:.2f})")
-        print(f"현재 {task_name} 캐시 크기: {len(self.question_cache[task_name])}")
-
-    def get_cache_status(self):
-        """캐시 상태 조회"""
-        if not self.question_cache:
-            return "캐시가 비어있습니다."
-        
-        status = "=== 질문 캐시 상태 ===\n"
-        for task_name, questions in self.question_cache.items():
-            status += f"\n{task_name}: {len(questions)}개 질문\n"
-            for i, (question, score, timestamp) in enumerate(questions, 1):
-                time_str = datetime.fromtimestamp(timestamp).strftime("%H:%M:%S")
-                status += f"  {i}. {question[:60]}... (점수: {score:.2f}, 시간: {time_str})\n"
-        
-        return status
-
-    def lightweight_chat(self, current_message: str, messages: List = None) -> str:
-        """경량 대화 시스템 - 직접 OpenAI 클라이언트로 gpt-5-nano 사용"""
-        print("경량 대화 시스템 활성화 (gpt-5-nano via Direct OpenAI)")
-        
-        # 향상된 프롬프트 - 전체 히스토리 활용
-        enhanced_prompt = """너는 손자처럼 호기심 많은 어린아이. 노인 사용자와 대화하며 짧고 자연스럽게 응답해."""
-        
-        # LangSmith 추적을 위해 ChatOpenAI 사용 (gpt-5-nano 시도)
-        try:
-            # gpt-5-nano로 시도 (간단한 메시지 구조)
-            nano_llm = ChatOpenAI(
-                model="gpt-5-nano",
-                openai_api_key=self.config.openai_api_key,
-                temperature=1.0,  # gpt-5-nano는 기본값 1만 지원
-                max_tokens=1000
-            )
-            
-            simple_message = f"다음 메시지에 간단히 답변해주세요: {current_message}"
-            nano_response = nano_llm.invoke([HumanMessage(content=simple_message)])
-            
-            print(f"gpt-5-nano (ChatOpenAI) 호출 성공: {nano_response.content}")
-            return nano_response.content
-            
-        except Exception as nano_error:
-            print(f"gpt-5-nano (ChatOpenAI) 실패: {nano_error}")
-            print("   gpt-3.5-turbo 폴백으로 전환...")
-            
-            # 폴백: LangChain으로 gpt-3.5-turbo 사용
-            try:
-                conversation_messages = [SystemMessage(content=enhanced_prompt)]
-                if messages:
-                    conversation_messages.extend(messages[::-2])
-                conversation_messages.append(HumanMessage(content=current_message))
-                
-                response = self.lightweight_llm.invoke(conversation_messages)
-                fallback_response = response.content.strip()
-                
-                print(f"LangChain 폴백 성공: {fallback_response}")
-                return fallback_response
-                
-            except Exception as e2:
-                print(f"LangChain 폴백도 실패: {e2}")
-                # 최종 폴백 응답들
-                fallback_responses = [
-                    "그렇구나! 더 얘기해 주세요~",
-                    "정말요? 재미있네요!",
-                    "우와! 그런 일이 있었구나!",
-                    "그래요? 신기해요!",
-                    "맞아요! 저도 그런 것 같아요!"
-                ]
-                import random
-                return random.choice(fallback_responses)
-
-    # (임시) 노인 mimic 답변 노드
-    def simulate_user_response(self, ai_question: str, conversation_context: List = None) -> str:
-        """AI 시뮬레이터: 평가 질문에 대한 노인 사용자의 답변 생성"""
-        print("AI 답변 시뮬레이터 활성화 (노인 사용자 역할)")
-        
-        # 노인 사용자 역할 프롬프트
-        user_simulation_prompt = """당신은 75세 할머니/할아버지 역할입니다. 손자와 대화하고 있습니다.
-
-특징:
-- 자연스럽고 따뜻한 말투
-- 때로는 기억이 완벽하지 않을 수 있음
-- 단순하고 솔직한 답변
-- 50-100자 내외의 적당한 길이
-
-평가 질문에 대해 노인이 실제로 답변할 법한 자연스러운 응답을 해주세요.
-완벽한 정답이 아니어도 괜찮습니다. 노인의 실제 반응처럼 답변해주세요.
-
-예시:
-질문: "아까 말씀하신 과일 중 사과, 배, 포도를 좋아하시는 순서대로 말씀해주세요."
-답변: "음... 사과를 제일 좋아하고, 그 다음에... 배였나? 포도도 달콤해서 좋아해요."
-
-질문: "사진 속 아이가 들고 있는 물건의 이름은 뭐에요?"
-답변: "저건 공이네요. 빨간색 공 같은데 예쁘네요."
-
-질문: "오늘은 몇일인가요?"
-답변: "오늘이... 25일이었나요? 정확히는 잘 모르겠어요."
-"""
-
-        try:
-            # 대화 히스토리 구성
-            conversation_messages = [SystemMessage(content=user_simulation_prompt)]
-            
-            if conversation_context:
-                # 최근 3턴 정도만 참조
-                recent_context = conversation_context[-3:] if len(conversation_context) >= 3 else conversation_context
-                conversation_messages.extend(recent_context)
-            
-            # AI 질문 추가
-            conversation_messages.append(HumanMessage(content=f"질문: {ai_question}"))
-            
-            # (임시) 노인 사용자 답변 생성 
-            response = self.response_simulator_llm.invoke(conversation_messages)
-            simulated_response = response.content.strip()
-            
-            print(f"시뮬레이션 답변 생성: {simulated_response}")
-            return simulated_response
-            
-        except Exception as e:
-            print(f"답변 시뮬레이션 실패: {e}")
-            # 폴백 답변들 (노인 스타일)
-            fallback_responses = [
-                "그렇네요... 잘 기억이 안 나네요.",
-                "음... 뭐라고 해야 할까요?",
-                "아, 그거 말이지요... 생각이 안 나네요.",
-                "맞아요, 그런 것 같아요.",
-                "글쎄요... 정확히는 모르겠어요."
-            ]
-            import random
-            return random.choice(fallback_responses)
 
     # === 조건부 엣지 결정 함수들 ===
     
@@ -893,37 +619,17 @@ class LangGraphDementiaChatbot:
         """대화 모드 결정"""
         return state["conversation_mode"]
 
-    def _decide_cache_usage(self, state: ConversationState) -> str:
-        """캐시된 질문 사용 여부 결정"""
-        cached_question_found = state.get("cached_question_found", False)
-        
-        if cached_question_found:
-            print("캐시된 질문 재사용")
-            return "use_cached"
-        else:
-            print("새로운 질문 생성 필요")
-            return "generate_new"
-
     def _decide_final_output(self, state: ConversationState) -> str:
-        """최종 출력 형태 결정 + 캐싱 로직"""
+        """최종 출력 형태 결정 (단순화됨)"""
         relevance = state["question_message_relevance"]
         threshold = self.config.fallback_threshold
         
-        # threshold를 넘으면 assessment 질문 출력
+        # threshold를 넘으면 assessment 질문 출력, 넘지 못하면 casual 대화로 종결
         if relevance >= threshold:
             print(f"평가 질문 출력 (맥락 점수 {relevance:.2f} >= 임계값 {threshold})")
             return "assessment"
         else:
-            # threshold 미만이면 질문을 캐시에 저장하고 casual 대화로 종결
             print(f"맥락 점수 부족 - casual 대화로 종결 (점수: {relevance:.2f} < 임계값 {threshold})")
-            
-            # 생성된 질문을 캐시에 저장
-            selected_question = state.get("selected_question", "")
-            selected_task = state.get("selected_task", "")
-            
-            if selected_question and selected_task:
-                self._cache_question(selected_task, selected_question, relevance)
-            
             return "casual"
 
     # === 메인 실행 함수 ===
@@ -963,11 +669,7 @@ class LangGraphDementiaChatbot:
             "last_assessment_question": "",
             "last_assessment_task": "",
             "assessment_score": 0.0,
-            "score_details": {},
-            # 캐시 관련 필드 초기화
-            "cached_question_found": False,
-            "cached_question_score": 0.0,
-            "reused_question": ""
+            "score_details": {}
         }
         
         # 그래프 실행

@@ -1,5 +1,5 @@
 """
-8. 캐싱폴백 구현 + 경량 답변 gpt-5-nano로 변경
+10. 경량 답변 gpt-5-nano만 사용 (gpt-3.5-turbo 폴백 제거)
 """
 import os   
 import json
@@ -116,31 +116,19 @@ class LangGraphDementiaChatbot:
             openai_api_key=config.openai_api_key,
             temperature=0.3
         )
-        # 경량 대화용 빠른 LLM 초기화 (LangChain)
+        # 경량 대화용 gpt-5-nano LLM 초기화
         self.lightweight_llm = ChatOpenAI(
-            model="gpt-3.5-turbo",  # LangChain 호환성을 위해 임시로 3.5 turbo 사용
+            model="gpt-5-nano",
             openai_api_key=config.openai_api_key,
-            temperature=0.7,
-            max_tokens=150  # 빠른 응답을 위해 토큰 제한
+            temperature=1.0,  # gpt-5-nano는 기본값 1만 지원
+            max_tokens=100
         )
-        
-        # AI 답변 시뮬레이터 (노인 사용자 역할)
-        self.response_simulator_llm = ChatOpenAI(
-            model="gpt-3.5-turbo",
-            openai_api_key=config.openai_api_key,
-            temperature=0.7,
-            max_tokens=200
-        )
-        
-        self.vectorizer = TfidfVectorizer(stop_words='english')
-        
-        # 질문 캐시 초기화
-        self.question_cache = {}  # {task_name: [(question, context_score, timestamp), ...]}
-        
-        # 그래프 빌드
-        self.graph = self._build_graph()
-        print(f"LangGraph 치매 평가 챗봇 초기화 완료 (모델: {config.model_name})")
 
+        self.vectorizer = TfidfVectorizer(stop_words='english')
+        self.question_cache = {}  # {task_name: [(question, context_score, timestamp), ...]}
+        self.graph = self._build_graph()
+        print(f"LangGraph 치매 평가 챗봇 초기화 완료 (모델: {config.model_name}, 경량모델: gpt-5-nano)")
+    
     def _build_graph(self) -> StateGraph:
         """단순화된 워크플로우 구성"""
         workflow = StateGraph(ConversationState)
@@ -678,60 +666,28 @@ class LangGraphDementiaChatbot:
         }
 
     def casual_conversation(self, state: ConversationState) -> ConversationState:
-        """일상 대화 처리 - 캐싱 후엔 경량 시스템 사용"""
+        """일상 대화 처리 - 무조건 경량모델 gpt-5-nano 사용"""
         messages = state["messages"]
         current_message = state["current_message"]
-        
-        # 워크플로우 단계 확인으로 캐싱 후 상황인지 판단
-        workflow_stage = state.get("workflow_stage", "")
-        
-        # 캐싱 후 casual 대화면 경량 시스템 사용
-        if "cached" in str(state.get("selected_question", "")).lower() or \
-           state.get("question_message_relevance", 1.0) < self.config.fallback_threshold:
-            print("캐싱 후 경량 대화 모드")
-            ai_response = self.lightweight_chat(current_message, messages)
-            response_type = "casual_lightweight"
-        else:
-            # 일반 casual 대화 (기존 방식)
-            print("일반 casual 대화 모드")
-            system_msg = """
-당신은 7~15세 사이 호기심 많고 예의바른 어린이입니다. 노인 사용자와 사진을 보며 대화하고 있습니다.
 
-대화 예시:
-사용자: "이 사진 속 강아지가 참 귀엽네"
-손자: "정말요! 털이 복슬복슬해서 만지고 싶어요. 어릴 때 키우신 강아지에요?"
-
-할머니: "꽃이 예쁘게 피었구나"  
-손자: "진짜요! 향기도 좋을 것 같고요. 꽃 좋아하세요? 저는 좋아해요!"
-
-최대한 사용자가 대화를 주도할 수 있도록 사용자에게 공감하며, 자연스럽고 호기심 어린 반응으로 대화를 이어가세요.
-
-구성:
-- 답변에 대한 호응/공감 
-- 본인의 의견
-
-주의: 대화를 자연스럽고 친근하게 하게 이어가는 것을 최우선으로 생각할 것
-
-"""
-
-            conversation_messages = [SystemMessage(content=system_msg)]
-            conversation_messages.extend(messages)
+        print("경량모델(gpt-5-nano) 기반 casual 대화 모드")
+        try:
+            conversation_messages = [SystemMessage(content="""
+너는 손자처럼 호기심 많은 어린아이. 노인 사용자와 대화하며 짧고 자연스럽게 응답해.
+""")]
+            conversation_messages.extend(messages[-2:])
             conversation_messages.append(HumanMessage(content=current_message))
-            
-            try:
-                response = self.llm.invoke(conversation_messages)
-                ai_response = response.content.strip()
-                response_type = "casual"
-            except Exception as e:
-                print(f"일상 대화 생성 실패: {e}")
-                # 실패 시 경량 시스템으로 폴백
-                ai_response = self.lightweight_chat(current_message, messages)
-                response_type = "casual_fallback"
-        
+
+            response = self.lightweight_llm.invoke(conversation_messages)
+            ai_response = response.content.strip()
+        except Exception as e:
+            print(f"경량 casual 대화 생성 실패: {e}")
+            ai_response = "제가 잘 이해하지 못했어요. 조금 다르게 말씀해 주실래요?"
+
         return {
             **state,
             "ai_response": ai_response,
-            "response_type": response_type,
+            "response_type": "casual_lightweight",
             "workflow_stage": "casual_chat"
         }
 
@@ -771,57 +727,53 @@ class LangGraphDementiaChatbot:
         return status
 
     def lightweight_chat(self, current_message: str, messages: List = None) -> str:
-        """경량 대화 시스템 - 직접 OpenAI 클라이언트로 gpt-5-nano 사용"""
-        print("경량 대화 시스템 활성화 (gpt-5-nano via Direct OpenAI)")
+        """경량 대화 시스템 - gpt-5-nano만 사용 (폴백 제거)"""
+        print("경량 대화 시스템 활성화 (gpt-5-nano only)")
         
         # 향상된 프롬프트 - 전체 히스토리 활용
-        enhanced_prompt = """너는 손자처럼 호기심 많은 어린아이. 노인 사용자와 대화하며 짧고 자연스럽게 응답해."""
+        enhanced_prompt = """당신은 7~12세 호기심 많은 어린이입니다. 할머니/할아버지와 자연스럽게 대화하고 있습니다.
+
+아래 대화 히스토리 전체를 참고해서, 사용자의 마지막 메시지에 대한 최적의 응답을 생성해주세요.
+
+중요한 지침:
+- 이전 대화 내용을 모두 기억하고 참고하세요
+- 대화의 흐름과 맥락에 자연스럽게 이어지는 응답을 하세요  
+- 사용자가 언급한 구체적인 내용들을 기억하고 언급하세요
+- 호기심 많고 따뜻한 어린이의 말투로 응답하세요
+- 50-100자 내외의 자연스러운 길이로 응답하세요
+
+구성:
+- 답변에 대한 호응/공감 한문장
+- 본인의 의견 1문장
+
+대화 히스토리와 사용자의 현재 메시지를 모두 고려해서 가장 적절하고 자연스러운 응답을 해주세요.
+주의: 대화를 자연스럽고 친근하게 하게 이어가는 것을 최우선으로 생각할 것
+"""
         
-        # LangSmith 추적을 위해 ChatOpenAI 사용 (gpt-5-nano 시도)
         try:
-            # gpt-5-nano로 시도 (간단한 메시지 구조)
-            nano_llm = ChatOpenAI(
-                model="gpt-5-nano",
-                openai_api_key=self.config.openai_api_key,
-                temperature=1.0,  # gpt-5-nano는 기본값 1만 지원
-                max_tokens=1000
-            )
+            # 초기화된 lightweight_llm 사용
+            conversation_messages = [SystemMessage(content=enhanced_prompt)]
+            if messages:
+                conversation_messages.extend(messages)
+            conversation_messages.append(HumanMessage(content=current_message))
             
-            simple_message = f"다음 메시지에 간단히 답변해주세요: {current_message}"
-            nano_response = nano_llm.invoke([HumanMessage(content=simple_message)])
+            nano_response = self.lightweight_llm.invoke(conversation_messages)
             
-            print(f"gpt-5-nano (ChatOpenAI) 호출 성공: {nano_response.content}")
+            print(f"gpt-5-nano 호출 성공: {nano_response.content}")
             return nano_response.content
             
         except Exception as nano_error:
-            print(f"gpt-5-nano (ChatOpenAI) 실패: {nano_error}")
-            print("   gpt-3.5-turbo 폴백으로 전환...")
-            
-            # 폴백: LangChain으로 gpt-3.5-turbo 사용
-            try:
-                conversation_messages = [SystemMessage(content=enhanced_prompt)]
-                if messages:
-                    conversation_messages.extend(messages[::-2])
-                conversation_messages.append(HumanMessage(content=current_message))
-                
-                response = self.lightweight_llm.invoke(conversation_messages)
-                fallback_response = response.content.strip()
-                
-                print(f"LangChain 폴백 성공: {fallback_response}")
-                return fallback_response
-                
-            except Exception as e2:
-                print(f"LangChain 폴백도 실패: {e2}")
-                # 최종 폴백 응답들
-                fallback_responses = [
-                    "그렇구나! 더 얘기해 주세요~",
-                    "정말요? 재미있네요!",
-                    "우와! 그런 일이 있었구나!",
-                    "그래요? 신기해요!",
-                    "맞아요! 저도 그런 것 같아요!"
-                ]
-                import random
-                return random.choice(fallback_responses)
+            print(f"gpt-5-nano 호출 실패: {nano_error}")
+            # 최종 폴백 응답들 (gpt-3.5-turbo 사용하지 않음)
+            fallback_responses = [
+                "그렇구나! 더 얘기해 주세요~",
+                "정말요? 재미있네요!",
+                "우와! 그런 일이 있었구나!",
+                "그래요? 신기해요!",
+                "맞아요! 저도 그런 것 같아요!"
+            ]
+            import random
+            return random.choice(fallback_responses)
 
     # (임시) 노인 mimic 답변 노드
     def simulate_user_response(self, ai_question: str, conversation_context: List = None) -> str:
