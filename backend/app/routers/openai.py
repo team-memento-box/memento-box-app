@@ -95,22 +95,63 @@ async def generate_grandparent_story(
     request: GrandparentStoryRequest,
     service: OpenAIService = Depends(lambda: openai_service)
 ):
-    """세션 ID로 Supabase에서 대화 기록을 가져와서 할머니/할아버지 스타일 이야기로 변환"""
+    """세션 ID로 Supabase에서 대화 기록을 가져와서 할머니/할아버지 스타일 이야기로 변환하고 DB에 저장"""
     try:
-        # Supabase에서 해당 세션의 대화 기록 가져오기 (Service Role Key 사용)
-        print(f"Debug - Searching for session_id: {request.session_id}")
+        # 1. 세션 정보 가져오기 (user_id, selected_photos)
+        print(f"Debug - Getting session info for session_id: {request.session_id}")
+        session_response = supabase_admin.table("sessions").select(
+            "user_id, selected_photos"
+        ).eq("id", request.session_id).single().execute()
+        
+        if not session_response.data:
+            raise HTTPException(status_code=404, detail="해당 세션을 찾을 수 없습니다.")
+        
+        user_id = session_response.data["user_id"]
+        selected_photos = session_response.data["selected_photos"]
+        print(f"Debug - Session info: user_id={user_id}, photos={selected_photos}")
+        
+        # 2. 대화 기록 가져오기
+        print(f"Debug - Getting conversations for session_id: {request.session_id}")
         conversations_response = supabase_admin.table("conversations").select(
-            "conversation_order, question_text, user_response_text"
+            "id, conversation_order, question_text, user_response_text"
         ).eq("session_id", request.session_id).order("conversation_order").execute()
         
-        print(f"Debug - Query result: {conversations_response.data}")
         print(f"Debug - Number of conversations found: {len(conversations_response.data) if conversations_response.data else 0}")
         
         if not conversations_response.data:
             raise HTTPException(status_code=404, detail="해당 세션의 대화 기록을 찾을 수 없습니다.")
         
-        # 할머니/할아버지 스타일 이야기 생성
+        # 3. 할머니/할아버지 스타일 이야기 생성
         story = await service.generate_grandparent_story(conversations_response.data)
+        print(f"Debug - Generated story length: {len(story)}")
+        
+        # 4. photo_stories 테이블에 저장
+        conversation_ids = [conv["id"] for conv in conversations_response.data]
+        
+        # selected_photos 배열의 첫 번째 photo_id 사용 (여러 사진이 있을 수 있으므로)
+        photo_id = selected_photos[0] if selected_photos and len(selected_photos) > 0 else None
+        
+        if not photo_id:
+            raise HTTPException(status_code=400, detail="세션에 연결된 사진이 없습니다.")
+        
+        story_data = {
+            "user_id": user_id,
+            "photo_id": photo_id,
+            "title": f"할머니의 이야기 - {datetime.now().strftime('%Y년 %m월 %d일')}",
+            "story_text": story,
+            "language": "ko",
+            "status": "generated",
+            "source_session_ids": [request.session_id],
+            "source_conversation_ids": conversation_ids,
+            "tts_audio_path": None,
+            "tts_status": None,
+            "tts_params": None
+        }
+        
+        print(f"Debug - Saving story to photo_stories table")
+        story_response = supabase_admin.table("photo_stories").insert(story_data).execute()
+        
+        print(f"Debug - Story saved successfully with ID: {story_response.data[0]['id'] if story_response.data else 'Unknown'}")
         
         return GrandparentStoryResponse(
             story=story,
@@ -121,6 +162,7 @@ async def generate_grandparent_story(
     except HTTPException:
         raise
     except Exception as e:
+        print(f"Error - Exception occurred: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
