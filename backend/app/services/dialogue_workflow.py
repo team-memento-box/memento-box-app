@@ -94,8 +94,9 @@ class DialogueWorkflow:
         return workflow.compile()
     
     def init_state_node(self, state: GraphState) -> GraphState:
-        """상태 초기화 노드: DB에서 대화 기록 조회"""
+        """상태 초기화 노드: DB에서 대화 기록 및 사진 정보 조회"""
         conversation_id = state["input_data"]["conversation_id"]
+        photo_context = state["input_data"]["photo_context"]
         
         try:
             # Supabase에서 대화 기록 조회
@@ -103,12 +104,31 @@ class DialogueWorkflow:
                 "*, sessions(*)"
             ).eq("id", conversation_id).execute()
             
+            # 사진 정보 조회 (photo_context에 photo_id가 있는 경우)
+            photo_info = None
+            if photo_context.get("photo_id"):
+                try:
+                    photo_response = self.supabase.table("photos").select(
+                        "id, filename, file_path, description, tags, location_name"
+                    ).eq("id", photo_context["photo_id"]).single().execute()
+                    
+                    if photo_response.data:
+                        photo_info = photo_response.data
+                        print(f"Photo info loaded: {photo_info}")
+                except Exception as photo_error:
+                    print(f"Failed to load photo info: {photo_error}")
+            
             if response.data:
                 # 기존 대화가 있으면 메시지 히스토리 구성
                 conversation = response.data[0]
                 message_history = [
-                    {"role": "system", "content": "당신은 치매 진단을 위한 대화 시스템입니다."}
+                    {"role": "system", "content": "당신은 치매 진단을 위한 따뜻한 대화 시스템입니다."}
                 ]
+                
+                # 사진 정보를 시스템 메시지에 포함
+                if photo_info:
+                    system_message = f"당신은 치매 진단을 위한 따뜻한 대화 시스템입니다. 현재 사진 정보: 파일명({photo_info.get('filename', 'N/A')}), 설명({photo_info.get('description', 'N/A')}), 위치({photo_info.get('location_name', 'N/A')}), 태그({', '.join(photo_info.get('tags', []))})"
+                    message_history[0]["content"] = system_message
                 
                 # 이전 대화 내용이 있다면 추가
                 if conversation.get("ai_analysis"):
@@ -118,18 +138,26 @@ class DialogueWorkflow:
                     })
             else:
                 # 새로운 대화
+                system_content = "당신은 치매 진단을 위한 따뜻한 대화 시스템입니다."
+                if photo_info:
+                    system_content += f" 현재 사진 정보: 파일명({photo_info.get('filename', 'N/A')}), 설명({photo_info.get('description', 'N/A')}), 위치({photo_info.get('location_name', 'N/A')}), 태그({', '.join(photo_info.get('tags', []))})"
+                
                 message_history = [
-                    {"role": "system", "content": "당신은 치매 진단을 위한 대화 시스템입니다."}
+                    {"role": "system", "content": system_content}
                 ]
             
             state["message_history"] = message_history
             state["intermediate"] = {"cache_score": None, "routing_decision": ""}
             state["output"] = {"response_text": "", "response_audio_url": None}
             
+            # photo_info를 상태에 저장 (다른 노드에서 활용 가능)
+            if photo_info:
+                state["photo_info"] = photo_info
+            
         except Exception as e:
             print(f"Database query failed: {e}")
             state["message_history"] = [
-                {"role": "system", "content": "당신은 치매 진단을 위한 대화 시스템입니다."}
+                {"role": "system", "content": "당신은 치매 진단을 위한 따뜻한 대화 시스템입니다."}
             ]
             state["intermediate"] = {"cache_score": None, "routing_decision": ""}
             state["output"] = {"response_text": "", "response_audio_url": None}
