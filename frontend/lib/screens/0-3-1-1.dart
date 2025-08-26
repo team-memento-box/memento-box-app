@@ -537,7 +537,7 @@ class _GroupCreateScreenState extends State<GroupCreateScreen> {
                 fontSize: 12,
               ),
             ),
-            keyboardType: TextInputType.number,
+            keyboardType: TextInputType.text,
             style: const TextStyle(
               fontFamily: 'Pretendard',
               fontSize: 18,

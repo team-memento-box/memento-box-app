@@ -45,13 +45,20 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
     widget.audioService.durationStream.listen((dur) {
       if (dur != null) setState(() => _duration = dur);
     });
-    // widget.audioService.playingStream.listen((playing) {
-    //   setState(() => _isPlaying = playing);
-    // });
-    // 강제로 초기 duration 설정
-    final dur = widget.audioService.getDuration(); // <- 새 메서드 필요
-    if (dur != null) {
-      setState(() => _duration = dur);
+
+    // 위젯 초기화 시 오디오 파일을 미리 로드하여 duration을 가져옴
+    _loadAudioDuration();
+  }
+
+  Future<void> _loadAudioDuration() async {
+    try {
+      await widget.audioService.loadAudio(widget.audioPath);
+      final dur = widget.audioService.getDuration();
+      if (dur != null) {
+        setState(() => _duration = dur);
+      }
+    } catch (e) {
+      print('오디오 duration 로드 실패: $e');
     }
   }
 
@@ -142,14 +149,13 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
                 onPressed: () async {
                   if (!_isPlaying) {
                     try {
-                      await widget.audioService.loadAudio(widget.audioPath);
-                      widget.audioService.play();
+                      await widget.audioService.play();
                       setState(() => _isPlaying = true);
                     } catch (e) {
-                      print('오디오 로드 실패: $e');
+                      print('오디오 재생 실패: $e');
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('오디오 파일을 불러올 수 없습니다'),
+                          content: Text('오디오 파일을 재생할 수 없습니다'),
                           backgroundColor: Colors.red,
                         ),
                       );
