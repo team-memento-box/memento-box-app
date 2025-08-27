@@ -5,13 +5,14 @@ import numpy as np
 from pathlib import Path
 from scipy.io.wavfile import write as write_wav
 from fish_module import init_engine, run_tts
+from preprocessing import preprocess_wav_directory
 
 
 def main():
     parser = argparse.ArgumentParser(description="Fish-Speech TTS Inference")
     parser.add_argument("--text", type=str, required=True, help="Text to synthesize")
     parser.add_argument("--output", type=str, default="output.wav", help="Output audio file path")
-    parser.add_argument("--reference-audio", type=str, help="Reference audio file path")
+    parser.add_argument("--reference-audio", type=str, default="test.wav", help="Reference audio file path")
     parser.add_argument("--reference-text", type=str, default="", help="Reference audio transcription")
     parser.add_argument("--llama-checkpoint", type=str, default="checkpoints/fish-speech-1.5", 
                        help="LLaMA model checkpoint path")
@@ -21,12 +22,26 @@ def main():
     parser.add_argument("--device", type=str, default="cuda", help="Device to use (cuda/cpu)")
     parser.add_argument("--half", action="store_true", help="Use half precision")
     parser.add_argument("--compile", action="store_true", help="Compile models for faster inference")
+    parser.add_argument("--preprocess", action="store_true", help="Preprocess reference audio before use")
+    parser.add_argument("--input-dir", type=str, default="input_wav", help="Input directory for preprocessing")
+    parser.add_argument("--processed-dir", type=str, default="processed_wav", help="Output directory for preprocessing")
     
     args = parser.parse_args()
     
     print("Fish-Speech TTS inference starting...")
     print(f"Text: {args.text}")
     print(f"Output file: {args.output}")
+    
+    # Preprocess reference audio if requested
+    if args.preprocess:
+        print("Preprocessing audio files...")
+        preprocess_wav_directory(args.input_dir, args.processed_dir, sample_rate=16000)
+        # Update reference audio path to use processed version
+        if args.reference_audio and Path(args.input_dir).exists():
+            processed_ref = Path(args.processed_dir) / Path(args.reference_audio).name
+            if processed_ref.exists():
+                args.reference_audio = str(processed_ref)
+                print(f"Using preprocessed reference audio: {args.reference_audio}")
     
     # Initialize the TTS engine
     print("Loading models...")
