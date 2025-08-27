@@ -1,0 +1,29 @@
+{
+  "features": [
+    "MFCC2",
+    "kurt_MFCC30",
+    "mean_MFCC30",
+    "skew_MFCC2",
+    "mean_MFCC16",
+    "flt_bnk_eng22",
+    "MFCC30",
+    "kurt_MFCC16",
+    "flt_bnk_eng2",
+    "flt_bnk_eng24",
+    "MFCC1",
+    "flt_bnk_eng15",
+    "kurt_MFCC2",
+    "flt_bnk_eng20",
+    "flt_bnk_eng13",
+    "n_sil_segments",
+    "frac_silence",
+    "min_sil_len",
+    "jitter",
+    "shimmer",
+    "HNR"
+  ],
+  "class_names": [
+    "CN(0)",
+    "AD(1)"
+  ]
+}
