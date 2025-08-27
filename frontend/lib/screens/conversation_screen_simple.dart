@@ -84,7 +84,7 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
           .single();
       
       setState(() {
-        _currentPhoto = Photo.fromJson(response);
+        _currentPhoto = Photo.fromSupabase(response);
       });
     } catch (e) {
       print('사진 데이터 로드 실패: $e');
