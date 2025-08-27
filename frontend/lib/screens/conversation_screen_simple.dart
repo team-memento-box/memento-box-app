@@ -28,6 +28,8 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
   String _conversationId = '';
   String _userId = 'temp_user';
   bool _isConnecting = false;
+  bool _isProcessing = false;
+  String _processingMessage = '';
   Photo? _currentPhoto;
 
   @override
@@ -59,6 +61,7 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
       _webSocketService.onMessage = _handleMessage;
       _webSocketService.onError = _handleError;
       _webSocketService.onDisconnect = _handleDisconnect;
+      _webSocketService.onProcessing = _handleProcessing;
       
       // WebSocket 연결
       await _webSocketService.connect(_conversationId);
@@ -93,6 +96,9 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
 
   void _handleMessage(Map<String, dynamic> message) {
     setState(() {
+      _isProcessing = false;
+      _processingMessage = '';
+      
       if (message['type'] == 'response' && message['data'] != null) {
         _messages.add({
           'type': 'ai',
@@ -103,7 +109,19 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
     });
   }
 
+  void _handleProcessing(String message) {
+    setState(() {
+      _isProcessing = true;
+      _processingMessage = message;
+    });
+  }
+
   void _handleError(String error) {
+    setState(() {
+      _isProcessing = false;
+      _processingMessage = '';
+    });
+    
     print('WebSocket 오류: $error');
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -199,8 +217,19 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              itemCount: _messages.length,
+              itemCount: _messages.length + (_isProcessing ? 1 : 0),
               itemBuilder: (context, index) {
+                if (index == _messages.length && _isProcessing) {
+                  // 처리 중 메시지 표시
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: AssistantBubble(
+                      text: _processingMessage,
+                      isActive: true,
+                    ),
+                  );
+                }
+                
                 final message = _messages[index];
                 final isAi = message['type'] == 'ai';
                 
@@ -242,8 +271,14 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
                 ),
                 const SizedBox(width: 10),
                 ElevatedButton(
-                  onPressed: _sendMessage,
-                  child: const Text('전송'),
+                  onPressed: _isProcessing ? null : _sendMessage,
+                  child: _isProcessing 
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('전송'),
                 ),
               ],
             ),
