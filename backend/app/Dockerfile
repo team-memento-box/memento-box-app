@@ -1,4 +1,4 @@
-# 개발용
+# WebSocket + Celery 지원 개발용
 FROM python:3.11-slim
 WORKDIR /app
 
@@ -12,20 +12,17 @@ RUN apt-get update && apt-get install -y \
     libstdc++6 \
     && rm -rf /var/lib/apt/lists/*
 
-# Poetry 설치
-RUN pip install poetry
+# requirements.txt 방식으로 변경
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Poetry 설정
-ENV POETRY_NO_INTERACTION=1 \
-    POETRY_VENV_IN_PROJECT=1 \
-    POETRY_CACHE_DIR=/tmp/poetry_cache
-
-COPY pyproject.toml poetry.lock* ./
-RUN poetry install --without dev && rm -rf $POETRY_CACHE_DIR
+# 추가 의존성 설치 (Celery, Redis)
+RUN pip install celery[redis]==5.3.6 redis==5.0.1
 
 COPY . .
 
-CMD ["poetry", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# FastAPI 서버 실행 (기본 명령)
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
 
 

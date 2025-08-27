@@ -7,8 +7,6 @@ from supabase import create_client, Client
 import uuid
 from datetime import datetime
 
-from core.config import settings
-
 class WorkflowInput(TypedDict):
     """그래프 실행을 위해 외부에서 주입되는 초기 데이터"""
     conversation_id: str
@@ -32,6 +30,7 @@ class GraphState(TypedDict):
     message_history: List[Dict[str, str]]
     intermediate: IntermediateState
     output: FinalOutput
+    photo_info: Optional[Dict[str, Any]]  # 사진 정보 저장
 
 class DialogueWorkflow:
     """LangGraph 기반 대화 워크플로우 시스템"""
@@ -206,13 +205,18 @@ class DialogueWorkflow:
         """일반 응답 생성 노드: 자연스러운 일상 대화"""
         user_message = state["input_data"]["user_message"]
         photo_context = state["input_data"]["photo_context"]
-        message_history = state["message_history"]
+        photo_info = state.get("photo_info", {})
+        
+        # 사진 정보 포함한 컨텍스트 구성
+        photo_description = ""
+        if photo_info:
+            photo_description = f"사진 정보: {photo_info.get('description', '')}, 위치: {photo_info.get('location_name', '')}, 태그: {', '.join(photo_info.get('tags', []))}"
         
         conversation_prompt = f"""
         사용자와 자연스럽고 따뜻한 대화를 나누세요.
         
         사용자 메시지: {user_message}
-        사진 정보: {photo_context}
+        {photo_description}
         
         응답 원칙:
         1. 50자 이내로 간결하게 답변
@@ -266,6 +270,8 @@ class DialogueWorkflow:
     def fallback_node(self, state: GraphState) -> GraphState:
         """대체 응답 처리 노드: 경량 LLM으로 응답 생성"""
         user_message = state["input_data"]["user_message"]
+        conversation_id = state["input_data"]["conversation_id"]
+        photo_context = state["input_data"]["photo_context"]
         
         fallback_prompt = f"""
         간단하고 따뜻한 응답을 생성하세요.
@@ -283,14 +289,32 @@ class DialogueWorkflow:
             
             state["output"]["response_text"] = response.content.strip()
             
-            # TODO: 비동기 작업 큐에 고품질 질문 생성 요청 추가
-            # self._schedule_background_task(user_message, conversation_id)
+            # 백그라운드에서 고품질 질문 생성 요청
+            self._schedule_background_task(user_message, conversation_id, photo_context)
             
         except Exception as e:
             print(f"Fallback response failed: {e}")
             state["output"]["response_text"] = "네, 알겠습니다."
         
         return state
+    
+    def _schedule_background_task(self, user_message: str, conversation_id: str, photo_context: dict):
+        """Celery를 통한 백그라운드 작업 스케줄링"""
+        try:
+            from tasks import generate_high_quality_questions
+            
+            context = {
+                "user_message": user_message,
+                "conversation_id": conversation_id, 
+                "photo_context": photo_context
+            }
+            
+            # 비동기 작업 발행
+            generate_high_quality_questions.delay(context)
+            print(f"Background task scheduled for conversation: {conversation_id}")
+            
+        except Exception as e:
+            print(f"Failed to schedule background task: {e}")
     
     def _route_decision(self, state: GraphState) -> str:
         """라우터 결정에 따른 경로 선택"""
@@ -309,7 +333,8 @@ class DialogueWorkflow:
             "input_data": input_data,
             "message_history": [],
             "intermediate": {"cache_score": None, "routing_decision": ""},
-            "output": {"response_text": "", "response_audio_url": None}
+            "output": {"response_text": "", "response_audio_url": None},
+            "photo_info": None
         }
         
         try:
