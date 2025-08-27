@@ -28,7 +28,7 @@ except ImportError as e:
 class DementiaDetector:
     """치매 감지를 위한 메인 서비스 클래스"""
     
-    def __init__(self, model_dir: str = "models/dementia"):
+    def __init__(self, model_dir: str = "services/models"):
         """
         DementiaDetector 초기화
         

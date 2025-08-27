@@ -19,7 +19,7 @@ app.add_middleware(
 )
 
 # 치매 감지 서비스 초기화
-from services.dementia_detector import get_dementia_detector_service
+from services.audio_dementia_detector import get_dementia_detector_service
 
 # AI 전용 라우터 등록 (추후 활성화)
 # app.include_router(chat.router, prefix="/ai", tags=["chat"])
