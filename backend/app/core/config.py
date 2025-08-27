@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     # Supabase 설정
     SUPABASE_URL: str
     SUPABASE_ANON_KEY: str
+    SUPABASE_SERVICE_ROLE_KEY: str
     SUPABASE_JWT_SECRET: str
     SUPABASE_ISS: str
     
@@ -56,5 +57,8 @@ class Settings(BaseSettings):
 # 인스턴스를 만들어서 다른 곳에서 불러다 씀
 settings = Settings()
 
-# Supabase 클라이언트 초기화
+# Supabase 클라이언트 초기화 (익명 키 사용)
 supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
+
+# Supabase 서비스 역할 클라이언트 초기화 (관리자 권한)
+supabase_admin: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)

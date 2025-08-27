@@ -10,11 +10,13 @@ import '../models/photo.dart';
 class PhotoConversationScreen extends StatefulWidget {
   final String photoId;
   final String photoUrl;
+  final String jwtToken;
 
   const PhotoConversationScreen({
     Key? key,
     required this.photoId,
     required this.photoUrl,
+    required this.jwtToken,
   }) : super(key: key);
 
   @override
@@ -167,6 +169,7 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
         'photo_url': widget.photoUrl,
         'description': _currentPhoto?.description ?? '',
       },
+      jwtToken: widget.jwtToken,
     );
 
     if (predefinedMessage == null) {

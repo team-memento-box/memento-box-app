@@ -68,10 +68,25 @@ class MyCustomApp extends StatelessWidget {
           return MaterialPageRoute(builder: (context) => const AddPhotoScreen());
         }
         if (settings.name == '/conversation') {
-          return MaterialPageRoute(builder: (context) => const PhotoConversationScreen(
-            photoId: 'temp_photo_id',
-            photoUrl: 'temp_photo_url',
-          ));
+          final args = settings.arguments as Map<String, dynamic>?;
+          if (args != null) {
+            return MaterialPageRoute(
+              builder: (context) => PhotoConversationScreen(
+                photoId: args['photoId'] ?? 'temp_photo_id',
+                photoUrl: args['photoUrl'] ?? 'temp_photo_url',
+                jwtToken: args['jwtToken'] ?? '',
+              ),
+            );
+          } else {
+            // 기본값으로 fallback (테스트용)
+            return MaterialPageRoute(
+              builder: (context) => const PhotoConversationScreen(
+                photoId: 'temp_photo_id',
+                photoUrl: 'temp_photo_url',
+                jwtToken: '',
+              ),
+            );
+          }
         }
         if (settings.name == '/kakao_signin') {
           return MaterialPageRoute(
