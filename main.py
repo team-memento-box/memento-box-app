@@ -10,7 +10,7 @@ from preprocessing import preprocess_wav_directory
 
 def main():
     parser = argparse.ArgumentParser(description="Fish-Speech TTS Inference")
-    parser.add_argument("--text", type=str, required=True, help="Text to synthesize")
+    parser.add_argument("--text", type=str, default="안녕하세요", required=True, help="Text to synthesize")
     parser.add_argument("--output", type=str, default="output.wav", help="Output audio file path")
     parser.add_argument("--reference-audio", type=str, default="test.wav", help="Reference audio file path")
     parser.add_argument("--reference-text", type=str, default="", help="Reference audio transcription")
