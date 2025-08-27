@@ -32,6 +32,7 @@ class GraphState(TypedDict):
     output: FinalOutput
     photo_info: Optional[Dict[str, Any]]  # 사진 정보 저장
     session_id: Optional[str]  # 세션 ID 저장
+    _authenticated_client: Optional[Client]  # 인증된 Supabase 클라이언트
 
 class DialogueWorkflow:
     """LangGraph 기반 대화 워크플로우 시스템"""
@@ -121,64 +122,41 @@ class DialogueWorkflow:
         return workflow.compile()
     
     def init_state_node(self, state: GraphState) -> GraphState:
-        """상태 초기화 노드: DB에서 대화 기록 및 사진 정보 조회, 필요시 세션 생성"""
+        """상태 초기화 노드: DB에서 대화 기록 및 사진 정보 조회"""
         conversation_id = state["input_data"]["conversation_id"]
         user_id = state["input_data"]["user_id"]
         photo_context = state["input_data"]["photo_context"]
+        
+        # 상태에서 인증된 클라이언트 가져오기
+        client = state.get("_authenticated_client", self.supabase)
+        
+        print(f"🔍 상태 초기화: conversation_id={conversation_id}, user_id={user_id}")
         
         try:
             # 사진 정보 조회 (photo_context에 photo_id가 있는 경우)
             photo_info = None
             if photo_context.get("photo_id"):
                 try:
-                    photo_response = self.supabase.table("photos").select(
+                    photo_response = client.table("photos").select(
                         "id, filename, file_path, description, tags, location_name"
                     ).eq("id", photo_context["photo_id"]).single().execute()
                     
                     if photo_response.data:
                         photo_info = photo_response.data
-                        print(f"Photo info loaded: {photo_info}")
+                        print(f"📷 사진 정보 로드됨: {photo_info}")
                 except Exception as photo_error:
-                    print(f"Failed to load photo info: {photo_error}")
+                    print(f"❌ 사진 정보 로드 실패: {photo_error}")
             
-            # 대화 ID로 기존 세션 조회
-            session_response = self.supabase.table("sessions").select(
-                "id, user_id, status, selected_photos"
-            ).eq("id", conversation_id).execute()
-            
-            session_id = None
-            if session_response.data:
-                # 기존 세션 존재
-                session = session_response.data[0]
-                session_id = session["id"]
-                print(f"Existing session found: {session_id}")
-            else:
-                # 새 세션 생성
-                try:
-                    new_session = {
-                        "id": conversation_id,
-                        "user_id": user_id,
-                        "session_type": "reminiscence",
-                        "status": "active",
-                        "selected_photos": [photo_context.get("photo_id")] if photo_context.get("photo_id") else []
-                    }
-                    
-                    create_response = self.supabase.table("sessions").insert(new_session).execute()
-                    if create_response.data:
-                        session_id = create_response.data[0]["id"]
-                        print(f"New session created: {session_id}")
-                    else:
-                        print("Failed to create new session")
-                        session_id = conversation_id  # fallback
-                        
-                except Exception as session_error:
-                    print(f"Session creation failed: {session_error}")
-                    session_id = conversation_id  # fallback
+            # conversation_id를 session_id로 사용 (main.py에서 이미 세션 생성됨)
+            session_id = conversation_id
+            print(f"✅ 세션 ID 설정: {session_id}")
             
             # 해당 세션의 기존 대화 내역 조회
-            conversations_response = self.supabase.table("conversations").select(
+            conversations_response = client.table("conversations").select(
                 "id, question_text, user_response_text, conversation_order"
             ).eq("session_id", session_id).order("conversation_order").execute()
+            
+            print(f"💬 기존 대화 내역: {len(conversations_response.data) if conversations_response.data else 0}개")
             
             # 메시지 히스토리 구성
             system_content = "당신은 치매 진단을 위한 따뜻한 대화 시스템입니다."
@@ -385,29 +363,36 @@ class DialogueWorkflow:
             return "use_cache"
         return "use_fallback"
     
-    async def _save_conversation_to_db(self, state: GraphState) -> None:
+    async def _save_conversation_to_db(self, state: GraphState, authenticated_client: Client = None) -> None:
         """대화 내용을 DB에 저장"""
         try:
+            # 인증된 클라이언트가 있으면 사용, 없으면 기본 클라이언트 사용
+            client = authenticated_client if authenticated_client else self.supabase
+            
             session_id = state.get("session_id")
             user_message = state["input_data"]["user_message"]
             ai_response = state["output"]["response_text"]
             photo_context = state["input_data"]["photo_context"]
+            user_id = state["input_data"]["user_id"]
+            
+            print(f"💾 대화 저장 시도: session_id={session_id}, user_id={user_id}")
             
             if not session_id:
-                print("No session_id found, skipping conversation save")
+                print("❌ session_id 없음, 대화 저장 건너뜀")
                 return
             
             # 다음 conversation_order 계산
-            count_response = self.supabase.table("conversations").select(
-                "conversation_order", count="exact"
+            count_response = client.table("conversations").select(
+                "conversation_order"
             ).eq("session_id", session_id).execute()
             
             next_order = len(count_response.data) + 1 if count_response.data else 1
+            print(f"📊 대화 순서: {next_order}")
             
             # 대화 레코드 생성
             conversation_data = {
                 "session_id": session_id,
-                "user_id": state["input_data"]["user_id"],
+                "user_id": user_id,
                 "photo_id": photo_context.get("photo_id"),
                 "conversation_order": next_order,
                 "question_text": ai_response,
@@ -416,16 +401,21 @@ class DialogueWorkflow:
                 "is_cist_item": False
             }
             
-            insert_response = self.supabase.table("conversations").insert(conversation_data).execute()
+            print(f"📝 대화 데이터: {conversation_data}")
+            
+            insert_response = client.table("conversations").insert(conversation_data).execute()
             if insert_response.data:
-                print(f"Conversation saved successfully: {insert_response.data[0]['id']}")
+                print(f"✅ 대화 저장 성공: {insert_response.data[0]['id']}")
             else:
-                print("Failed to save conversation")
+                print("❌ 대화 저장 실패: 응답 데이터 없음")
                 
         except Exception as e:
-            print(f"Failed to save conversation to DB: {e}")
+            print(f"❌ 대화 저장 DB 오류: {type(e).__name__}: {str(e)}")
+            # 디버깅을 위해 상세 오류 정보 출력
+            import traceback
+            print(f"📋 상세 오류: {traceback.format_exc()}")
 
-    async def process_message(self, input_data: WorkflowInput) -> FinalOutput:
+    async def process_message(self, input_data: WorkflowInput, authenticated_client: Client = None) -> FinalOutput:
         """메시지 처리 진입점"""
         initial_state = {
             "input_data": input_data,
@@ -433,28 +423,30 @@ class DialogueWorkflow:
             "intermediate": {"cache_score": None, "routing_decision": ""},
             "output": {"response_text": "", "response_audio_url": None},
             "photo_info": None,
-            "session_id": None
+            "session_id": None,
+            "_authenticated_client": authenticated_client
         }
         
         try:
-            print(f"Starting workflow for conversation: {input_data['conversation_id']}")
+            print(f"🚀 워크플로우 시작: conversation_id={input_data['conversation_id']}")
+            
             final_state = await self.app.ainvoke(initial_state)
-            print(f"Workflow completed successfully for conversation: {input_data['conversation_id']}")
+            print(f"✅ 워크플로우 완료: conversation_id={input_data['conversation_id']}")
             
             # 대화 내용을 DB에 저장
             if final_state["output"]["response_text"]:
                 try:
-                    await self._save_conversation_to_db(final_state)
-                    print("Conversation saved to database successfully")
+                    await self._save_conversation_to_db(final_state, authenticated_client)
+                    print("✅ 대화 DB 저장 완료")
                 except Exception as db_error:
-                    print(f"Failed to save conversation to database: {db_error}")
+                    print(f"❌ 대화 DB 저장 실패: {db_error}")
                     # 대화 저장 실패해도 응답은 전송
             
             return final_state["output"]
         except Exception as e:
             import traceback
-            print(f"Workflow execution failed for conversation {input_data['conversation_id']}: {e}")
-            print(f"Traceback: {traceback.format_exc()}")
+            print(f"❌ 워크플로우 실행 실패: conversation_id={input_data['conversation_id']}, error={e}")
+            print(f"📋 상세 오류: {traceback.format_exc()}")
             return {
                 "response_text": "죄송합니다. 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
                 "response_audio_url": None

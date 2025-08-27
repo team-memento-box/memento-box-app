@@ -36,37 +36,51 @@ app.add_middleware(
 # LangGraph 대화 워크플로우 초기화
 workflow = DialogueWorkflow()
 
-async def create_session(user_id: str, photo_id: str = None) -> str:
+async def create_session(user_id: str, conversation_id: str, photo_id: str = None) -> str:
     """새로운 대화 세션을 생성하고 세션 ID 반환"""
     try:
-        session_id = str(uuid.uuid4())
+        # conversation_id를 session_id로 사용
+        session_id = conversation_id
+        
+        print(f"🔍 세션 생성 시도: session_id={session_id}, user_id={user_id}, photo_id={photo_id}")
+        
+        # 기존 세션 확인
+        existing_session = supabase_admin.table("sessions").select("*").eq("id", session_id).execute()
+        
+        if existing_session.data:
+            print(f"✅ 기존 세션 발견: {session_id}")
+            return session_id
         
         # sessions 테이블에 새 세션 생성
         session_data = {
             "id": session_id,
             "user_id": user_id,
             "session_type": "reminiscence",  # 추억 회상 대화
-            "status": "active",
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat()
+            "status": "active"
         }
         
-        # photo_id가 있다면 연관 정보 추가
+        # photo_id가 있다면 selected_photos 배열에 추가 (스키마에 맞춤)
         if photo_id:
-            session_data["metadata"] = {"photo_id": photo_id}
+            session_data["selected_photos"] = [photo_id]
         
-        # Supabase를 통해 세션 생성
+        print(f"📝 세션 데이터 생성: {session_data}")
+        
+        # Supabase 서비스 역할로 세션 생성
         result = supabase_admin.table("sessions").insert(session_data).execute()
         
         if not result.data:
-            raise Exception("세션 생성 실패")
+            print(f"❌ 세션 생성 실패: 응답 데이터가 없음")
+            raise Exception("세션 생성 실패 - 응답 데이터 없음")
         
-        print(f"새 세션 생성됨: {session_id} (사용자: {user_id}, 사진: {photo_id})")
+        print(f"✅ 새 세션 생성 성공: {session_id} (사용자: {user_id}, 사진: {photo_id})")
         return session_id
         
     except Exception as e:
-        print(f"세션 생성 오류: {e}")
-        raise HTTPException(status_code=500, detail="세션 생성에 실패했습니다")
+        print(f"❌ 세션 생성 오류: {type(e).__name__}: {str(e)}")
+        # 디버깅을 위해 상세 오류 정보 출력
+        import traceback
+        print(f"📋 상세 오류: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"세션 생성에 실패했습니다: {str(e)}")
 
 @app.websocket("/ws/chat/{conversation_id}")
 async def websocket_chat_endpoint(websocket: WebSocket, conversation_id: str):
@@ -102,10 +116,12 @@ async def websocket_chat_endpoint(websocket: WebSocket, conversation_id: str):
                     user_authenticated = True
                     print(f"사용자 인증 성공: {user_id}")
                     
-                    # 세션 생성 (photo_id가 있다면 함께)
+                    # 세션 생성 (conversation_id를 session_id로 사용, photo_id가 있다면 함께)
                     photo_id = message_data.get("photo_context", {}).get("photo_id")
-                    session_id = await create_session(user_id, photo_id)
+                    session_id = await create_session(user_id, conversation_id, photo_id)
                     session_created = True
+                    
+                    print(f"✅ 인증 및 세션 생성 완료: user_id={user_id}, session_id={session_id}")
                     
                     # 인증 및 세션 생성 성공 알림
                     await websocket.send_text(json.dumps({
@@ -152,8 +168,8 @@ async def websocket_chat_endpoint(websocket: WebSocket, conversation_id: str):
                 "conversation_id": conversation_id
             }))
             
-            # LangGraph 워크플로우 실행
-            response = await workflow.process_message(workflow_input)
+            # LangGraph 워크플로우 실행 (인증된 클라이언트 전달)
+            response = await workflow.process_message(workflow_input, authenticated_client=supabase_admin)
             
             # 응답 전송
             await websocket.send_text(json.dumps({
