@@ -8,18 +8,9 @@ class Settings(BaseSettings):
     # POSTGRES_PASSWORD: str = None
     # POSTGRES_DB: str = None
     
-    # 데이터베이스 URL (기존) - 선택적으로 만들어서 검증 에러 방지
-    ASYNC_DATABASE_URL: str = ""
-    SYNC_DATABASE_URL: str = ""
-    
-    # Redis 설정 (Celery용)
-    redis_host: str = "redis"
-    redis_port: str = "6379"
-    
-    # RabbitMQ 설정 (백업용)
-    rabbitmq_host: str = "rabbitmq"
-    rabbitmq_user: str = "admin"
-    rabbitmq_pass: str = "password"
+    # 데이터베이스 URL (기존)
+    ASYNC_DATABASE_URL: str = None
+    SYNC_DATABASE_URL: str = None
     
     # Supabase 설정
     SUPABASE_URL: str

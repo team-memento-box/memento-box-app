@@ -1,9 +1,9 @@
-from routers import openai
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import json
 from services.dialogue_workflow import DialogueWorkflow, WorkflowInput
+from routers import openai
 # from routers import chat, conversation  # AI 전용 라우터들
 
 load_dotenv()
@@ -18,6 +18,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(openai.router, prefix="/api/openai", tags=["openai"])
+
 # AI 전용 라우터 등록 (추후 활성화)
 # app.include_router(chat.router, prefix="/ai", tags=["chat"])
 # app.include_router(conversation.router, prefix="/ai", tags=["conversation"])
@@ -31,9 +33,6 @@ app.add_middleware(
 
 # LangGraph 대화 워크플로우 초기화
 workflow = DialogueWorkflow()
-
-app.include_router(openai.router, prefix="/api/openai", tags=["openai"])
-
 
 @app.websocket("/ws/chat/{conversation_id}")
 async def websocket_chat_endpoint(websocket: WebSocket, conversation_id: str):
