@@ -23,7 +23,9 @@ celery_app.conf.update(
 )
 
 # OpenAI 클라이언트 초기화
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = openai.AsyncOpenAI(
+    api_key=os.getenv("OPENAI_API_KEY")
+)
 
 async def generate_grandparent_story_openai(conversations_data):
     """할머니/할아버지 스타일 이야기 생성 (OpenAI API 직접 호출)"""
@@ -47,7 +49,7 @@ async def generate_grandparent_story_openai(conversations_data):
 이 대화를 바탕으로 할머니가 들려주는 따뜻한 이야기로 만들어주세요."""
 
     try:
-        response = await openai.ChatCompletion.acreate(
+        response = await client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": system_prompt},
