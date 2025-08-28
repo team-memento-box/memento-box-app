@@ -1,29 +1,50 @@
-fastapi
+# Core FastAPI dependencies
+fastapi>=0.104.1
 pydantic>=2.0.0,<3.0.0
-uvicorn[standard]
+pydantic-settings>=2.0.0
+uvicorn>=0.24.0
+python-dotenv>=1.0.0
+python-multipart>=0.0.6
+
+# Database dependencies
 asyncpg
 psycopg2-binary
-python-dotenv
 alembic
-pydantic-settings
+supabase>=2.0.0
+
+# Web and networking
 aiohttp
 aiofiles
-python-multipart
+httpx==0.27.2
+websockets>=12.0
+
+# Authentication and security
 python-jose[cryptography]
 passlib[bcrypt]
-pytz
-python-dateutil
-pygame
+
+# LangChain and AI dependencies
+langchain>=0.1.0
+langchain-openai>=0.0.8
+langgraph>=0.0.25
+langsmith>=0.1.0
 openai
 tiktoken
+
+# Task queue
+celery[redis]>=5.3.6
+redis>=5.0.1
+
+# Audio processing and ML dependencies for dementia detection
+pygame
 numpy
 soundfile 
 pydub
-httpx==0.27.2
-supabase
-# ML dependencies for dementia detection
 scikit-learn>=1.0.0
 librosa>=0.9.0
 noisereduce>=2.0.0
 scipy>=1.7.0
 pandas>=1.3.0
+
+# Utility dependencies
+pytz
+python-dateutil
