@@ -8,7 +8,7 @@ from datetime import datetime
 from services.dialogue_workflow import DialogueWorkflow, WorkflowInput
 from core.auth import get_supabase_user
 from core.config import supabase_admin
-# from routers import chat, conversation  # AI 전용 라우터들
+from routers import chat, conversation  # AI 전용 라우터들
 
 load_dotenv()
 app = FastAPI(title="Memento Box AI API", description="AI 전용 API - 채팅, 이미지 분석, 음성 합성")
@@ -22,16 +22,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# AI 전용 라우터 등록 (추후 활성화)
-# app.include_router(chat.router, prefix="/ai", tags=["chat"])
-# app.include_router(conversation.router, prefix="/ai", tags=["conversation"])
-# app.include_router(chat.router, prefix="/api", tags=["llm"])
-# app.include_router(family.router) # 가족 관리
-# app.include_router(photo.router)
-# app.include_router(speech.router)
-# app.include_router(report.router)
-# app.include_router(conversation.router)
-# app.include_router(fish.router)
+# AI 전용 라우터 등록
+app.include_router(chat.router, prefix="/api", tags=["chat-legacy"])
+app.include_router(conversation.router, prefix="/api", tags=["conversation"])
 
 # LangGraph 대화 워크플로우 초기화
 workflow = DialogueWorkflow()
