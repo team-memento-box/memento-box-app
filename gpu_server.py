@@ -8,6 +8,9 @@ import base64
 from io import BytesIO
 from scipy.io.wavfile import write as write_wav
 import logging
+import requests
+import tempfile
+import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -31,13 +34,28 @@ class TTSResponse(BaseModel):
     duration: float
     status: str
 
+def download_audio_from_url(url: str) -> str:
+    """Download audio file from URL and save to temporary file"""
+    try:
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+        
+        # Create temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp_file:
+            for chunk in response.iter_content(chunk_size=8192):
+                tmp_file.write(chunk)
+            return tmp_file.name
+    except Exception as e:
+        logger.error(f"Failed to download audio from {url}: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to download audio: {str(e)}")
+
 @app.on_event("startup")
 async def startup_event():
     global engine
     logger.info("Loading Fish-Speech models...")
     try:
         engine = init_engine(
-            llama_checkpoint_path="checkpoints/fish-speech-1.5",
+            llama_checkpoint_path="checkpoints/fish-speech-1.5-yth-lora-8000",
             decoder_checkpoint_path="checkpoints/fish-speech-1.5/firefly-gan-vq-fsq-8x1024-21hz-generator.pth",
             device="cuda",
             half=False,
@@ -50,14 +68,24 @@ async def startup_event():
 
 @app.post("/tts", response_model=TTSResponse)
 async def text_to_speech(request: TTSRequest):
+    temp_audio_path = None
     try:
         logger.info(f"TTS request: {request.text[:50]}...")
+        
+        # Handle reference audio
+        if request.reference_audio.startswith("http"):
+            # Download from URL (Supabase storage)
+            temp_audio_path = download_audio_from_url(request.reference_audio)
+            prompt_audio_path = temp_audio_path
+        else:
+            # Use local file
+            prompt_audio_path = request.reference_audio if request.reference_audio != "test.wav" else "test.wav"
         
         # Run inference
         sample_rate, waveform = run_tts(
             engine=engine,
             input_text=request.text,
-            prompt_audio_path=request.reference_audio if request.reference_audio != "test.wav" else "test.wav",
+            prompt_audio_path=prompt_audio_path,
             prompt_text=request.reference_text
         )
         
@@ -101,6 +129,14 @@ async def text_to_speech(request: TTSRequest):
     except Exception as e:
         logger.error(f"TTS inference failed: {e}")
         raise HTTPException(status_code=500, detail=f"TTS inference failed: {str(e)}")
+    finally:
+        # Clean up temporary file
+        if temp_audio_path and os.path.exists(temp_audio_path):
+            try:
+                os.unlink(temp_audio_path)
+                logger.info(f"Cleaned up temporary file: {temp_audio_path}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up temporary file {temp_audio_path}: {e}")
 
 @app.get("/health")
 async def health_check():

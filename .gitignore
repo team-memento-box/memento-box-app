@@ -13,7 +13,7 @@ filelists
 /.vscode
 /data_server/target
 /*.npy
-
+/new_checkpoints
 /*.mp3
 /*.lab
 /results

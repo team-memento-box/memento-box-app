@@ -8,8 +8,8 @@ from fish_speech.utils.schema import ServeTTSRequest, ServeReferenceAudio
 
 
 def init_engine(
-    llama_checkpoint_path="checkpoints/fish-speech-1.5",
-    decoder_checkpoint_path="checkpoints/fish-speech-1.5/firefly-gan-vq-fsq-8x1024-21hz-generator.pth",
+    llama_checkpoint_path="checkpoints/fish-speech-1.5-yth-lora-8000",
+    decoder_checkpoint_path="new_checkpoints/fish-speech-1.5/firefly-gan-vq-fsq-8x1024-21hz-generator.pth",
     decoder_config_name="firefly_gan_vq",
     device="cuda",
     half=False,
@@ -55,7 +55,7 @@ def run_tts(engine, input_text, prompt_audio_path=None, prompt_text=""):
         reference_id=None,
         references=references,
         max_new_tokens=0,
-        chunk_length=200,
+        chunk_length=100,
         top_p=0.7,
         repetition_penalty=1.2,
         temperature=0.7,
