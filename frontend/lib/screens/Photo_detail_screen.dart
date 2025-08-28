@@ -282,15 +282,36 @@ class _PhotoDetailScreenState extends State<PhotoDetailScreen> {
                               ),
                             )
                           : ElevatedButton(
-                              onPressed: () {
-                                Navigator.pushNamed(
-                                  context, 
-                                  Routes.conversation,
-                                  arguments: {
-                                    'photoId': widget.photoData['photo_id'],
-                                    'photoUrl': widget.photoData['image_url'],
-                                  },
-                                );
+                              onPressed: () async {
+                                try {
+                                  // Supabase 세션에서 JWT 토큰 가져오기
+                                  final session = SupabaseService.client.auth.currentSession;
+                                  
+                                  if (session == null || session.accessToken.isEmpty) {
+                                    // 로그인되지 않은 경우 로그인 화면으로 이동
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('로그인이 필요합니다.'))
+                                    );
+                                    Navigator.pushNamed(context, '/signin');
+                                    return;
+                                  }
+                                  
+                                  // 대화 화면으로 이동 (JWT 토큰과 함께)
+                                  Navigator.pushNamed(
+                                    context, 
+                                    Routes.conversation,
+                                    arguments: {
+                                      'photoId': widget.photoData['photo_id'],
+                                      'photoUrl': widget.photoData['image_url'],
+                                      'jwtToken': session.accessToken,
+                                    },
+                                  );
+                                } catch (e) {
+                                  print('대화 시작 오류: $e');
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('대화를 시작할 수 없습니다. 다시 시도해주세요.'))
+                                  );
+                                }
                               },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF8CCAA7),
