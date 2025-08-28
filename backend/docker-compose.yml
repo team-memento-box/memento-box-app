@@ -61,7 +61,7 @@ services:
         volumes:
             - ./app:/app
             - ./.env:/app/.env
-        command: celery -A tasks worker --loglevel=info --uid=nobody --gid=nogroup
+        command: celery -A tasks.story_tasks worker --loglevel=info --uid=nobody --gid=nogroup
         depends_on:
             redis:
                 condition: service_started
