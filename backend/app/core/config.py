@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     
     # OpenAI API 설정
     OPENAI_API_KEY: str
+    
+    # LangSmith 설정 (LangChain 모니터링)
+    LANGSMITH_TRACING: Optional[str] = None
+    LANGSMITH_ENDPOINT: Optional[str] = None
+    LANGSMITH_API_KEY: Optional[str] = None
+    LANGSMITH_PROJECT: Optional[str] = None
 
     # JWT 인증 설정
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30

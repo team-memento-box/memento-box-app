@@ -6,6 +6,7 @@ import os
 from supabase import create_client, Client
 import uuid
 from datetime import datetime
+from core.config import settings
 
 class WorkflowInput(TypedDict):
     """그래프 실행을 위해 외부에서 주입되는 초기 데이터"""
@@ -38,10 +39,24 @@ class DialogueWorkflow:
     """LangGraph 기반 대화 워크플로우 시스템"""
     
     def __init__(self):
-        # 필수 환경 변수 검증
-        openai_key = os.getenv("OPENAI_API_KEY")
-        supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_ANON_KEY")
+        # 필수 환경 변수 검증 (settings 사용)
+        openai_key = settings.OPENAI_API_KEY
+        supabase_url = settings.SUPABASE_URL
+        supabase_key = settings.SUPABASE_ANON_KEY
+        
+        # LangSmith 설정
+        langsmith_tracing = settings.LANGSMITH_TRACING and settings.LANGSMITH_TRACING.lower() == "true"
+        langsmith_project = settings.LANGSMITH_PROJECT or "memento-box-dialogue"
+        
+        # LangSmith 환경변수 설정 (LangChain이 자동으로 읽도록)
+        if settings.LANGSMITH_TRACING:
+            os.environ["LANGSMITH_TRACING"] = settings.LANGSMITH_TRACING
+        if settings.LANGSMITH_API_KEY:
+            os.environ["LANGSMITH_API_KEY"] = settings.LANGSMITH_API_KEY
+        if settings.LANGSMITH_PROJECT:
+            os.environ["LANGSMITH_PROJECT"] = settings.LANGSMITH_PROJECT
+        if settings.LANGSMITH_ENDPOINT:
+            os.environ["LANGSMITH_ENDPOINT"] = settings.LANGSMITH_ENDPOINT
         
         if not openai_key:
             raise ValueError("OPENAI_API_KEY environment variable is required")
@@ -51,16 +66,25 @@ class DialogueWorkflow:
             raise ValueError("SUPABASE_ANON_KEY environment variable is required")
         
         try:
+            # LangSmith 메타데이터 설정
+            langsmith_metadata = {
+                "service": "dialogue_workflow",
+                "version": "1.0",
+                "environment": os.getenv("ENVIRONMENT", "development")
+            }
+            
             self.llm_mini = ChatOpenAI(
-                model="gpt-5-mini",  # 실제 존재하는 모델로 변경
-                api_key=openai_key
+                model="gpt-4o-mini",
+                api_key=openai_key,
+                metadata=langsmith_metadata if langsmith_tracing else None
             )
             self.llm_nano = ChatOpenAI(
-                model="gpt-5-nano",  # 경량 모델로 gpt-3.5-turbo 사용
+                model="gpt-4o-mini",
                 max_tokens=256,
-                api_key=openai_key
+                api_key=openai_key,
+                metadata=langsmith_metadata if langsmith_tracing else None
             )
-            print("OpenAI LLM clients initialized successfully")
+            print(f"OpenAI LLM clients initialized successfully (LangSmith tracing: {langsmith_tracing})")
         except Exception as e:
             print(f"Failed to initialize OpenAI clients: {e}")
             raise
