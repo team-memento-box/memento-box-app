@@ -12,6 +12,7 @@ import 'package:path/path.dart' as path;
 import '../core/supabase_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:typed_data';
+import '../data/photo_api.dart';
 
 class AddPhotoScreen extends StatefulWidget {
   const AddPhotoScreen({super.key});
@@ -221,70 +222,39 @@ class _AddPhotoScreenState extends State<AddPhotoScreen> {
       final season = getSeasonEng(seasons[selectedSeasonIndex]);
       final description = _descController.text.trim();
       final file = _selectedImage!;
+      final fileName = path.basename(file.path);
       
       // 가족 앨범 ID 가져오기/생성
       final albumData = await _getOrCreateFamilyAlbum();
       final albumId = albumData['albumId'];
       final familyId = albumData['familyId'];
       
-      // 파일 읽기
-      final bytes = await file.readAsBytes();
-      final fileName = path.basename(file.path);
+      // 파일 경로 생성 (기존 로직 유지)
       final fileExtension = path.extension(fileName).toLowerCase();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final storagePath = '$familyId/${user.id}_$timestamp$fileExtension';
-
-      print('📤 [Supabase] 파일 업로드 시작: $storagePath');
       
-      // Supabase Storage에 파일 업로드 (인증 포함)
-      final uploadResult = await SupabaseService.client.storage
-          .from('photos')
-          .uploadBinary(
-            storagePath, 
-            bytes,
-            fileOptions: const FileOptions(
-              upsert: false,
-            ),
-          );
+      print('📤 [UI] PhotoApi.uploadPhoto 호출 시작');
+      print('📁 [UI] Storage 경로: $storagePath');
       
-      print('📤 [Supabase] 파일 업로드 완료: $uploadResult');
+      // PhotoApi를 통한 업로드 (자동으로 분석 트리거 포함)
+      final photo = await PhotoApi.uploadPhoto(
+        userId: user.id,
+        imageFile: file,
+        originalFilename: fileName,
+        description: description,
+        tags: [year.toString(), season],
+        albumId: albumId,
+        takenAt: DateTime(year, _getSeasonMonth(season), 1),
+        customFilePath: storagePath,
+      );
       
-      print('📤 [Supabase] Storage 경로: $storagePath');
-      
-      // 파일 정보 가져오기
-      final fileInfo = await file.stat();
-      
-      // photos 테이블에 메타데이터 저장
-      final photoData = {
-        'user_id': user.id,
-        'file_name': fileName,
-        'filename': fileName,
-        'original_filename': fileName,
-        'file_path': storagePath,
-        'file_size': fileInfo.size,
-        'mime_type': _getMimeType(fileExtension),
-        'description': description,
-        'tags': [year.toString(), season],
-        'album_id': albumId,
-        'taken_at': DateTime(year, _getSeasonMonth(season), 1).toIso8601String(),
-        'is_favorite': false,
-        'is_deleted': false,
-      };
-      
-      print('📤 [Supabase] DB 저장 데이터: $photoData');
-      
-      final insertResult = await SupabaseService.client
-          .from('photos')
-          .insert(photoData)
-          .select()
-          .single();
-      
-      print('📤 [Supabase] DB 저장 완료: $insertResult');
+      print('✅ [UI] 사진 업로드 및 분석 트리거 완료 - Photo ID: ${photo.id}');
       
       if (!mounted) return;
       
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('사진 업로드 성공!')),
+        const SnackBar(content: Text('사진 업로드 성공! 백그라운드에서 분석 중입니다.')),
       );
       
       // 폼 초기화
@@ -294,25 +264,11 @@ class _AddPhotoScreenState extends State<AddPhotoScreen> {
       });
       
     } catch (e) {
-      print('❌ [Supabase] 업로드 실패: $e');
+      print('❌ [UI] 업로드 실패: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('업로드 실패: $e')),
       );
-    }
-  }
-  
-  String _getMimeType(String extension) {
-    switch (extension) {
-      case '.jpg':
-      case '.jpeg':
-        return 'image/jpeg';
-      case '.png':
-        return 'image/png';
-      case '.gif':
-        return 'image/gif';
-      default:
-        return 'image/jpeg';
     }
   }
   

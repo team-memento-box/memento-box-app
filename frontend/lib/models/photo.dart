@@ -22,6 +22,8 @@ class Photo {
   final bool isDeleted;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final Map<String, dynamic>? photoAnalyzeResult;
+  final DateTime? analyzedAt;
 
   Photo({
     required this.id,
@@ -45,6 +47,8 @@ class Photo {
     required this.isDeleted,
     required this.createdAt,
     required this.updatedAt,
+    this.photoAnalyzeResult,
+    this.analyzedAt,
   });
 
   factory Photo.fromSupabase(Map<String, dynamic> json) {
@@ -70,6 +74,8 @@ class Photo {
       isDeleted: json['is_deleted'] ?? false,
       createdAt: DateTime.parse(json['created_at']),
       updatedAt: DateTime.parse(json['updated_at']),
+      photoAnalyzeResult: json['photo_analyze_result'] as Map<String, dynamic>?,
+      analyzedAt: json['analyzed_at'] != null ? DateTime.parse(json['analyzed_at']) : null,
     );
   }
 
@@ -126,6 +132,34 @@ class Photo {
   String get resolution {
     if (width == null || height == null) return '알 수 없음';
     return '${width}x$height';
+  }
+
+  // 분석 결과 관련 편의 메서드들
+  bool get hasAnalysis => photoAnalyzeResult != null;
+  
+  String? get analysisCaption => photoAnalyzeResult?['caption'] as String?;
+  
+  List<String> get analysisDenseCaptions => 
+      (photoAnalyzeResult?['dense_captions'] as List?)?.cast<String>() ?? [];
+  
+  String? get analysisMood => photoAnalyzeResult?['mood'] as String?;
+  
+  String? get analysisTimePeriod => photoAnalyzeResult?['time_period'] as String?;
+  
+  List<String> get analysisKeyObjects => 
+      (photoAnalyzeResult?['key_objects'] as List?)?.cast<String>() ?? [];
+  
+  String? get analysisPeopleDescription => 
+      photoAnalyzeResult?['people_description'] as String?;
+  
+  int get analysisPeopleCount => 
+      photoAnalyzeResult?['people_count'] as int? ?? 0;
+  
+  String? get analysisTimeOfDay => photoAnalyzeResult?['time_of_day'] as String?;
+  
+  String get formattedAnalyzedAt {
+    if (analyzedAt == null) return '분석되지 않음';
+    return '${analyzedAt!.year}년 ${analyzedAt!.month.toString().padLeft(2, '0')}월 ${analyzedAt!.day.toString().padLeft(2, '0')}일';
   }
 }
 
