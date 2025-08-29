@@ -1,4 +1,6 @@
 from dotenv import load_dotenv
+from routers import txt_analysis
+
 load_dotenv()
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
@@ -25,6 +27,8 @@ app.add_middleware(
 # AI 전용 라우터 등록
 app.include_router(chat.router, prefix="/api", tags=["chat-legacy"])
 app.include_router(conversation.router, prefix="/api", tags=["conversation"])
+app.include_router(txt_analysis.router, prefix="/analysis/text", tags=["analysis_text"])
+
 
 # LangGraph 대화 워크플로우 초기화
 workflow = DialogueWorkflow()

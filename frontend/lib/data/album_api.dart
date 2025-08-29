@@ -191,7 +191,7 @@ class AlbumApi {
           .from('photos')
           .select('id')
           .eq('user_id', userId)
-          .is_('album_id', null)
+          .isNull('album_id')
           .eq('is_deleted', false)
           .count();
 
