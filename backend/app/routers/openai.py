@@ -53,7 +53,7 @@ class TTSResponse(BaseModel):
 
 class BackgroundJobRequest(BaseModel):
     session_id: str
-    fish_speech_endpoint: str
+    fish_speech_endpoint: Optional[str] = None  # 선택적으로 만들어서 기본값 사용 가능
 
 
 class BackgroundJobResponse(BaseModel):
@@ -432,11 +432,15 @@ async def process_story_and_tts_background_endpoint(
         # 동적으로 Celery 작업 import (startup 시 config 에러 방지)
         try:
             from tasks.story_tasks import process_story_and_tts_background
+            from core.config import settings
+            
+            # Fish Speech 엔드포인트 설정 (요청에 없으면 기본값 사용)
+            fish_endpoint = request.fish_speech_endpoint or settings.FISH_SPEECH_ENDPOINT
             
             # Celery 작업 시작
             task = process_story_and_tts_background.delay(
                 session_id=request.session_id,
-                fish_speech_endpoint=request.fish_speech_endpoint
+                fish_speech_endpoint=fish_endpoint
             )
             
             return BackgroundJobResponse(

@@ -194,19 +194,39 @@ async def generate_tts_async(story_id: str, fish_speech_endpoint: str):
         "updated_at": datetime.now().isoformat()
     }).eq("id", story_id).execute()
     
-    # 참조 오디오 URL 가져오기
+    # 참조 오디오 URL 가져오기 - 음성 파일이 있는 대화 찾기
     if not source_conversation_ids:
         raise Exception("참조할 대화 기록이 없습니다.")
     
-    first_conversation_id = source_conversation_ids[0]
+    # 모든 관련 대화에서 음성 파일이 있는 것 찾기
     conversation_response = supabase_admin.table("conversations").select(
-        "user_response_audio_url"
-    ).eq("id", first_conversation_id).execute()
+        "id, user_response_audio_url"
+    ).in_("id", source_conversation_ids).execute()
     
     if not conversation_response.data:
         raise Exception("참조할 오디오 파일을 찾을 수 없습니다.")
     
-    reference_audio_url = conversation_response.data[0]["user_response_audio_url"]
+    # 음성 파일이 있는 대화들 중에서 가장 큰 파일 크기를 가진 것 찾기
+    reference_audio_url = None
+    max_file_size = 0
+    
+    for conversation in conversation_response.data:
+        audio_url = conversation["user_response_audio_url"]
+        if audio_url:
+            try:
+                # Supabase Storage에서 파일 메타데이터 조회
+                file_info = supabase_admin.storage.from_("voice").info(audio_url)
+                file_size = file_info.get("size", 0) if file_info else 0
+                
+                # 가장 큰 파일 크기를 가진 음성 파일 선택
+                if file_size > max_file_size:
+                    max_file_size = file_size
+                    reference_audio_url = audio_url
+            except Exception as e:
+                # 파일 정보 조회 실패 시 해당 파일은 건너뜀
+                print(f"파일 정보 조회 실패: {audio_url}, 에러: {e}")
+                continue
+    
     if not reference_audio_url:
         raise Exception("참조 오디오 파일이 존재하지 않습니다.")
     
@@ -228,7 +248,11 @@ async def generate_tts_async(story_id: str, fish_speech_endpoint: str):
     if not full_audio_url:
         raise Exception("참조 오디오 파일에 접근할 수 없습니다. Supabase 연결 문제가 있습니다.")
     
-    # Fish Speech API 호출
+    # Fish Speech API 호출 - 환경변수 강제 사용
+    import os
+    fish_speech_endpoint = os.getenv("FISH_SPEECH_ENDPOINT", "http://43.203.219.234:8000/tts")
+    print(f"🔧 강제 사용 엔드포인트: {fish_speech_endpoint}")
+    
     fish_speech_payload = {
         "text": story_text,
         "reference_audio": full_audio_url,

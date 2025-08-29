@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     
     # OpenAI API 설정
     OPENAI_API_KEY: str
+    
+    # Fish Speech TTS 설정
+    FISH_SPEECH_ENDPOINT: str = "http://localhost:5000"  # 기본값, GPU 서버 IP로 덮어쓸 수 있음
 
     # JWT 인증 설정
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
