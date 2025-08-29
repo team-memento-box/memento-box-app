@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     
     # Fish Speech TTS 설정
     FISH_SPEECH_ENDPOINT: str = "http://localhost:5000"  # 기본값, GPU 서버 IP로 덮어쓸 수 있음
+    
+    # LangSmith 설정
+    LANGSMITH_TRACING: Optional[str] = None
+    LANGSMITH_ENDPOINT: Optional[str] = None
+    LANGSMITH_API_KEY: Optional[str] = None
+    LANGSMITH_PROJECT: Optional[str] = None
 
     # JWT 인증 설정
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30

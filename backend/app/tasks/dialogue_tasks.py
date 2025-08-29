@@ -14,10 +14,18 @@ from .story_tasks import celery_app
 # Supabase 클라이언트 초기화 - celery_config와 통합
 from .celery_config import supabase_admin as supabase
 
-# LLM 초기화 (고품질 모델)
+# LLM 초기화 (고품질 모델) with LangSmith 지원
+langsmith_tracing = os.getenv("LANGSMITH_TRACING", "true").lower() == "true"
+langsmith_metadata = {
+    "service": "background_tasks",
+    "version": "1.0", 
+    "environment": os.getenv("ENVIRONMENT", "development")
+}
+
 llm_high_quality = ChatOpenAI(
     model="gpt-4",
-    api_key=os.getenv("OPENAI_API_KEY")
+    api_key=os.getenv("OPENAI_API_KEY"),
+    metadata=langsmith_metadata if langsmith_tracing else None
 )
 
 @celery_app.task

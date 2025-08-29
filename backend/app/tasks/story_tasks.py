@@ -36,17 +36,17 @@ async def generate_grandparent_story_openai(conversations_data):
         for conv in conversations_data
     ])
     
-    system_prompt = """당신은 따뜻한 할머니입니다. 손자/손녀와의 대화를 바탕으로 
-    추억이 담긴 이야기를 만들어주세요. 
-    - 할머니의 따뜻한 말투를 사용하세요
+    system_prompt = """당신은 따뜻한 할머니 혹은 할아버지입니다. 대화를 바탕으로 손자/손녀에게 들려준는 추억이 담긴 이야기를 만들어주세요. 
+    - 할머니 혹은 할아버지의 따뜻한 말투를 사용하세요
     - 가족의 사랑과 추억을 강조하세요
-    - 한국어로 자연스럽게 작성하세요"""
+    - 한국어로 자연스럽게 작성하세요
+    - 100자 이내로 작성하세요요"""
     
-    user_prompt = f"""다음은 손자/손녀와의 대화 내용입니다:
+    user_prompt = f"""다음은 대화 내용입니다:
 
 {conversation_text}
 
-이 대화를 바탕으로 할머니가 들려주는 따뜻한 이야기로 만들어주세요."""
+이 대화를 바탕으로 할머니 혹은 할아버지가 들려주는 따뜻한 이야기로 만들어주세요."""
 
     try:
         response = await client.chat.completions.create(
