@@ -115,15 +115,13 @@ Future<List<PhotoWithConv>> fetchPhotosWithConv(BuildContext context) async {
       throw Exception('가족 정보를 찾을 수 없습니다.');
     }
     
-    // Supabase에서 가족 사진 목록 조회 (home_screen.dart와 같은 방식)
-    final familyPhotos = await PhotoApi.fetchRecentFamilyPhotoNews(familyId, limit: 1000);
+    // Supabase에서 가족 사진 목록 조회 (대화 존재 여부 포함)
+    final familyPhotos = await PhotoApi.fetchRecentFamilyPhotoNewsWithConversations(familyId, limit: 1000);
     List<PhotoWithConv> result = [];
     
     for (var photoData in familyPhotos) {
-      // home_screen.dart와 같은 방식으로 Map 데이터 직접 사용
-      // TODO: 대화 존재 여부 확인 로직을 추후 Supabase 기반으로 구현
-      // 현재는 모든 사진에 대해 false로 설정
-      final hasConv = false;
+      // 대화 존재 여부는 이미 API에서 조회되어 포함됨
+      final hasConv = photoData['has_conversation'] ?? false;
       result.add(PhotoWithConv(photoData: photoData, hasConversation: hasConv));
     }
     
