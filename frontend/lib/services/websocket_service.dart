@@ -18,15 +18,11 @@ class WebSocketService {
     try {
       _conversationId = conversationId;
       
-      // 여러 환경 변수를 확인하여 URL 결정
-      String? baseUrl = dotenv.env['FASTAPI_URL'] ?? 
-                       dotenv.env['BASE_URL'] ?? 
-                       dotenv.env['AI_API_BASE_URL'];
+      // BASE_URL 환경 변수 확인
+      String? baseUrl = dotenv.env['BASE_URL'];
       
       print('🔍 Environment variables check:');
-      print('  FASTAPI_URL: ${dotenv.env['FASTAPI_URL']}');
       print('  BASE_URL: ${dotenv.env['BASE_URL']}');
-      print('  AI_API_BASE_URL: ${dotenv.env['AI_API_BASE_URL']}');
       print('  Selected baseUrl: $baseUrl');
       
       if (baseUrl == null) {
