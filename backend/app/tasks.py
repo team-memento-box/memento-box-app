@@ -26,10 +26,18 @@ supabase = create_client(
     os.getenv("SUPABASE_ANON_KEY")
 )
 
-# LLM 초기화 (고품질 모델)
+# LLM 초기화 (고품질 모델) with LangSmith 지원
+langsmith_tracing = os.getenv("LANGSMITH_TRACING", "true").lower() == "true"
+langsmith_metadata = {
+    "service": "background_tasks",
+    "version": "1.0", 
+    "environment": os.getenv("ENVIRONMENT", "development")
+}
+
 llm_high_quality = ChatOpenAI(
     model="gpt-4",
-    api_key=os.getenv("OPENAI_API_KEY")
+    api_key=os.getenv("OPENAI_API_KEY"),
+    metadata=langsmith_metadata if langsmith_tracing else None
 )
 
 @celery_app.task

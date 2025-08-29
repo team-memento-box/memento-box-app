@@ -41,6 +41,9 @@ class ChatSystem:
         self.max_tokens = os.getenv("AZURE_OPENAI_MAX_TOKENS")
         self.deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT")
 
+        # LangSmith 설정
+        self._setup_langsmith()
+
         self.client = AzureOpenAI(
             api_version=self.api_version,
             azure_endpoint=self.endpoint,
@@ -63,6 +66,17 @@ class ChatSystem:
         # 음성 파일 저장 디렉토리 생성
         self.audio_dir = Path("audio_records")
         self.audio_dir.mkdir(exist_ok=True)
+    
+    def _setup_langsmith(self):
+        """LangSmith 추적 설정"""
+        if settings.LANGSMITH_TRACING and settings.LANGSMITH_TRACING.lower() == "true":
+            os.environ["LANGCHAIN_TRACING_V2"] = settings.LANGSMITH_TRACING
+            if settings.LANGSMITH_ENDPOINT:
+                os.environ["LANGCHAIN_ENDPOINT"] = settings.LANGSMITH_ENDPOINT
+            if settings.LANGSMITH_API_KEY:
+                os.environ["LANGCHAIN_API_KEY"] = settings.LANGSMITH_API_KEY
+            if settings.LANGSMITH_PROJECT:
+                os.environ["LANGCHAIN_PROJECT"] = settings.LANGSMITH_PROJECT
     
     def start_recording(self):
         """음성 녹음 시작"""

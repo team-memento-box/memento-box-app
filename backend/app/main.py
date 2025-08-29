@@ -1,6 +1,8 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
 import json
 import os
 import uuid
@@ -9,8 +11,6 @@ from services.dialogue_workflow import DialogueWorkflow, WorkflowInput
 from core.auth import get_supabase_user
 from core.config import supabase_admin
 from routers import chat, conversation  # AI 전용 라우터들
-
-load_dotenv()
 app = FastAPI(title="Memento Box AI API", description="AI 전용 API - 채팅, 이미지 분석, 음성 합성")
 
 # CORS 설정

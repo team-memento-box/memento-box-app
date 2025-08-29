@@ -15,11 +15,25 @@ class ImageAnalyzer:
         self.api_key = os.getenv("AZURE_OPENAI_KEY")
         self.deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT")
 
+        # LangSmith 설정
+        self._setup_langsmith()
+
         self.client = AzureOpenAI(
             api_version=self.api_version,
             azure_endpoint=self.azure_endpoint,
             api_key=self.api_key,
         )
+    
+    def _setup_langsmith(self):
+        """LangSmith 추적 설정"""
+        if settings.LANGSMITH_TRACING and settings.LANGSMITH_TRACING.lower() == "true":
+            os.environ["LANGCHAIN_TRACING_V2"] = settings.LANGSMITH_TRACING
+            if settings.LANGSMITH_ENDPOINT:
+                os.environ["LANGCHAIN_ENDPOINT"] = settings.LANGSMITH_ENDPOINT
+            if settings.LANGSMITH_API_KEY:
+                os.environ["LANGCHAIN_API_KEY"] = settings.LANGSMITH_API_KEY
+            if settings.LANGSMITH_PROJECT:
+                os.environ["LANGCHAIN_PROJECT"] = settings.LANGSMITH_PROJECT
     
     def analyze_image(self, image_path):
         """이미지 분석"""
