@@ -21,13 +21,13 @@ void showSummaryModal(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
     ),
-    builder: (_) =>
-        SummaryModal(audioPath: audioPath, 
-        audioService: audioService, 
-        summaryText: summaryText, 
-        createdAt: createdAt,
-        sessionId: sessionId
-      ),
+    builder: (_) => SummaryModal(
+      audioPath: audioPath,
+      audioService: audioService,
+      summaryText: summaryText,
+      createdAt: createdAt,
+      sessionId: sessionId,
+    ),
   );
 }
 
@@ -57,7 +57,9 @@ class _SummaryModalState extends State<SummaryModal>
 
   @override
   Widget build(BuildContext context) {
-    final date = widget.createdAt != null ? DateTime.parse(widget.createdAt!) : DateTime.now();
+    final date = widget.createdAt != null
+        ? DateTime.parse(widget.createdAt!)
+        : DateTime.now();
     final formatted = '${date.year}년 ${date.month}월 ${date.day}일';
 
     return SingleChildScrollView(

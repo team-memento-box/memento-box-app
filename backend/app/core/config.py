@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     SUPABASE_URL: str
     SUPABASE_ANON_KEY: str
     SUPABASE_SERVICE_ROLE_KEY: str
+    SUPABASE_JWT_SECRET: str
+    SUPABASE_ISS: str
+    
+    # OpenAI 설정
+    OPENAI_API_KEY: str
     
     # 서버 설정
     SERVER_HOST: str = "http://localhost:8000"  # 기본값, .env에서 덮어쓸 수 있음
