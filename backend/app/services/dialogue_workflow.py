@@ -7,6 +7,10 @@ from supabase import create_client, Client
 import uuid
 from datetime import datetime
 from core.config import settings
+from langchain_core.prompts import ChatPromptTemplate
+import random
+from .dialogue_prompt import TIME_ORIENTATION_PROMPT
+
 
 class WorkflowInput(TypedDict):
     """그래프 실행을 위해 외부에서 주입되는 초기 데이터"""
@@ -125,9 +129,15 @@ class DialogueWorkflow:
         workflow.set_entry_point("init_state")
         
         # 엣지 정의
-        workflow.add_edge("init_state", "orientation_naming")
+        workflow.add_conditional_edges(
+            "init_state",
+            self._should_orientation_naming,
+            {
+                "orientation_naming": "orientation_naming",
+                "router": "router"
+            }
+        )
         workflow.add_edge("orientation_naming", END)
-        workflow.add_edge("init_state", "router")
         workflow.add_conditional_edges(
             "router",
             self._route_decision,
@@ -230,7 +240,89 @@ class DialogueWorkflow:
         return state
 
     def orientation_naming_node(self, state: GraphState) -> GraphState:
-        pass
+        """시간지남력(1턴) 또는 이름대기(2턴) 평가 노드"""
+        
+        message_history = state.get("message_history", [])
+        user_turns = sum(1 for msg in message_history if msg.get("role") == "user")
+        photo_info = state.get("photo_info", {})
+        
+        print(f"🎯 orientation_naming_node: user_turns={user_turns}")
+        
+        # CIST 결과 리스트로 관리
+        if not hasattr(self, 'cist_results'):
+            self.cist_results = []
+        
+        try:
+            if user_turns == 0:  # 1턴: 시간 지남력 (Rule-based)
+                current_date = datetime.now()
+                current_year = current_date.year
+                current_month = current_date.month
+                current_day = current_date.day
+                
+                # LLM 호출 없이 직접 질문 생성
+                time_question = f"기억 여행을 시작합니다. 출발점인 오늘은 {current_year}년 {current_month}월 며칠인가요?"
+                state["output"]["response_text"] = time_question
+                
+                # CIST 결과를 리스트에 추가
+                cist_item = {
+                    "cist_category": "time_orientation",
+                    "assessment_question": time_question,  # Rule-based 생성 질문
+                    "user_answer": "",  # 다음 턴에서 채워질 예정
+                    "expected_answer": f"{current_day}"  # 오늘 날짜 (예: "15")
+                }
+                self.cist_results.append(cist_item)
+                
+            elif user_turns == 1:  # 2턴: 이름대기
+                from .dialogue_prompt import NAMING_PROMPT
+                
+                if not photo_info or not photo_info.get("naming_objects"):
+                    state["output"]["response_text"] = "사진 정보를 확인할 수 없어서 대화를 계속 진행하겠습니다."
+                    return state
+                
+                # 사진에서 랜덤 객체 선택
+                naming_objects = photo_info.get("naming_objects", [])
+                selected_object = random.choice(naming_objects)
+                
+                # 연도 계산
+                current_year = datetime.now().year
+                photo_year = int(photo_info.get("photo_year", current_year))
+                years_diff = current_year - photo_year
+                
+                prompt_template = ChatPromptTemplate.from_template(NAMING_PROMPT)
+                chain = prompt_template | self.llm_mini
+                
+                response = chain.invoke({
+                    "photo_description": photo_info.get("description", ""),
+                    "naming_objects": naming_objects,
+                    "selected_object": selected_object,
+                    "years_diff": years_diff
+                })
+                
+                state["output"]["response_text"] = response.content.strip()
+                
+                # CIST 결과를 리스트에 추가
+                cist_item = {
+                    "cist_category": "naming",
+                    "assessment_question": state["output"]["response_text"],  # AI가 생성한 질문
+                    "user_answer": "",  # 다음 턴에서 채워질 예정
+                    "expected_answer": selected_object["item"]  # 사물 이름
+                }
+                self.cist_results.append(cist_item)
+                
+            else:
+                # 예외 상황: 3턴 이상에서는 orientation_naming에 들어오면 안됨
+                state["output"]["response_text"] = "죄송합니다. 처리 중 오류가 발생했습니다."
+                
+            # CIST 결과 리스트 확인
+            print(f"🧠 누적된 CIST 결과: {len(self.cist_results)}개")
+            for i, result in enumerate(self.cist_results, 1):
+                print(f"   {i}. {result['cist_category']}: {result['expected_answer']}")
+                
+        except Exception as e:
+            print(f"❌ orientation_naming_node 오류: {e}")
+            state["output"]["response_text"] = "죄송합니다. 처리 중 오류가 발생했습니다. 다시 말씀해 주시겠어요?"
+        
+        return state
     
     def router_node(self, state: GraphState) -> GraphState:
         """라우터 노드: 인지기능 평가 질문 삽입 여부 결정"""
@@ -336,8 +428,10 @@ class DialogueWorkflow:
         
         return state    
     
+    
     def bridge_generation_node(self, state: GraphState) -> GraphState:
         pass
+
 
     def fallback_node(self, state: GraphState) -> GraphState:
         """대체 응답 처리 노드: 경량 LLM으로 응답 생성"""
@@ -388,9 +482,22 @@ class DialogueWorkflow:
         except Exception as e:
             print(f"Failed to schedule background task: {e}")
     
+
     def _route_decision(self, state: GraphState) -> str:
         """라우터 결정에 따른 경로 선택"""
         return state["intermediate"]["routing_decision"]
+    
+
+    def _should_orientation_naming(self, state: GraphState) -> str:
+        """대화 1~2턴 반드시 orientation_naming 진입"""
+        message_history = state.get("message_history", [])
+        
+        # user 메시지 개수로 턴수 계산 (user-assistant 1쌍 = 1턴)
+        user_turns = sum(1 for msg in message_history if msg.get("role") == "user")
+        
+        # 1-2턴에서만 orientation_naming으로 진입
+        return "orientation_naming" if user_turns < 2 else "router"
+    
     
     def _cache_decision(self, state: GraphState) -> str:
         """캐시 점수에 따른 경로 선택"""
@@ -425,7 +532,7 @@ class DialogueWorkflow:
             next_order = len(count_response.data) + 1 if count_response.data else 1
             print(f"📊 대화 순서: {next_order}")
             
-            # 대화 레코드 생성
+            # 대화 레코드 생성 (단순화)
             conversation_data = {
                 "session_id": session_id,
                 "user_id": user_id,
@@ -434,7 +541,7 @@ class DialogueWorkflow:
                 "question_text": ai_response,
                 "question_type": "open_ended",  # 기본값
                 "user_response_text": user_message,
-                "is_cist_item": False
+                "is_cist_item": False  # 기본값
             }
             
             print(f"📝 대화 데이터: {conversation_data}")
