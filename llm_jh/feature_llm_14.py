@@ -1,5 +1,5 @@
 """
-13. naming: 사진 메타데이터 naming에 사용하도록 추가
+14. recall 분리 및 코드 정리
 """
 import os   
 import json
@@ -43,6 +43,12 @@ class ConversationState(TypedDict):
     reused_question: str                   # 재사용된 질문
     # 사진 메타데이터 관련 필드
     photo_metadata: Dict[str, Any]         # 사진 메타데이터 (caption, objects, people 등)
+    # Registration-Recall 분리 필드
+    turn_counter: int                      # 대화 턴 카운터
+    pending_recall_items: List[str]        # registration에서 저장된 항목들 (recall 대기)
+    recall_scheduled_turn: int             # recall이 예정된 턴 번호
+    recall_question_type: str              # recall에서 사용할 질문 유형 (예: '싫어하는', '좋아하는')
+    registration_phase: str                # 'registration', 'recall', 'none'
 
 @dataclass
 class ChatbotConfig:
@@ -52,21 +58,34 @@ class ChatbotConfig:
     model_name: str = "gpt-4o-mini"
 
 ASSESSMENT_TASKS = {
-    "registration_recall": {
+    "registration": {
         "description": 
-        """기억 등록은 즉각적인 기억력을 평가하고, 회상은 기억을 유지하는 능력을 평가하는 항목입니다.
-          messages 최근 5개 turn 내에서 동일 선상에서 비교될 수 있는 단어/고유명사가 3개 이상 나오면 본 평가내역을 활용합니다.""",
+        """기억 등록(Registration): 즉각적인 기억력을 평가합니다.
+          messages 최근 5개 turn 내에서 동일 선상에서 비교될 수 있는 단어/고유명사가 3개 이상 나오면 registration 평가를 활용합니다.
+          답변을 저장하고 5턴 후 recall 평가를 예약합니다.""",
         "example_questions": [
             "아까 말씀하신 과일 중 사과, 배, 포도를 어릴 때 가장 좋아했던 순서대로 말씀해주세요.",
             "아까 말씀하신 자녀 중 영희, 철수, 길동이를 살가운 순서대로 말씀해주시겠어요?",
             "아까 말씀하신 공책, 필통, 샤프를 어릴 적 갖고 싶었던 순서대로 말씀해주세요.",
-            "콩, 생선, 고추들을 어릴 적 싫어했던 순서대로 말씀해주세요.",
-            "콩, 생선, 고추들을 요즘 좋아하시는 순서대로 말씀해주세요."
+            "콩, 생선, 고추들을 어릴 적 좋아했던 순서대로 말씀해주세요."
         ],
         "scoring_criteria": {
-            "keywords": ["콩", "생선", "고추"],  # 예시 답변 키워드들
-            "required_count": 3,  # 필요한 키워드 개수
-            "scoring_type": "registration_recall"  # 채점 방식
+            "scoring_type": "registration",  # 채점 방식
+            "recall_delay_turns": 5  # 몇 턴 후에 recall 수행
+        }
+    },
+    "recall": {
+        "description": 
+        """기억 회상(Recall): registration에서 등록된 항목들을 일정 시간 후 다른 조건으로 다시 물어보는 평가입니다.
+          registration에서 5턴 전에 저장된 항목들을 사용하여 다른 조건의 질문을 합니다.""",
+        "example_question_templates": [
+            "{items}들을 어릴 적 싫어했던 순서대로 말씀해주세요.",
+            "{items}들을 요즘 좋아하시는 순서대로 말씀해주세요.",
+            "{items}들을 먹기 쉬운 순서대로 말씀해주세요.",
+            "{items}들을 요리하기 어려운 순서대로 말씀해주세요."
+        ],
+        "scoring_criteria": {
+            "scoring_type": "recall"  # 채점 방식
         }
     },
     "Naming": {
@@ -121,6 +140,10 @@ class LangGraphDementiaChatbot:
             openai_api_key=config.openai_api_key,
             temperature=0.3
         )
+        
+        # Registration-Recall 관리 시스템
+        self.registration_storage = {}  # {conversation_id: {"items": [...], "turn": int, "recall_turn": int}}
+        
         # 경량 대화용 빠른 LLM 초기화 (LangChain)
         self.lightweight_llm = ChatOpenAI(
             model="gpt-3.5-turbo",  # LangChain 호환성을 위해 임시로 3.5 turbo 사용
@@ -131,10 +154,9 @@ class LangGraphDementiaChatbot:
         
         # AI 답변 시뮬레이터 (노인 사용자 역할)
         self.response_simulator_llm = ChatOpenAI(
-            model="gpt-3.5-turbo",
+            model="gpt-5-nano",
             openai_api_key=config.openai_api_key,
-            temperature=0.7,
-            max_tokens=200
+            temperature=1.0,
         )
         
         self.vectorizer = TfidfVectorizer(stop_words='english')
@@ -260,6 +282,10 @@ class LangGraphDementiaChatbot:
         """Assessment 답변 채점 (피드백 없이 점수만 기록)"""
         print("답변 채점 중...")
         
+        # Registration 답변일 때 아이템 저장 및 recall 예약
+        if state.get("last_assessment_task") == "registration":
+            self._process_registration_answer(state)
+        
         current_message = state["current_message"]
         task_name = state["last_assessment_task"]
         last_question = state["last_assessment_question"]
@@ -314,37 +340,15 @@ class LangGraphDementiaChatbot:
                     사진 메타데이터 정보: {json.dumps(photo_metadata.get('objects', []), ensure_ascii=False)}
 
                     평가 기준:
-                    - 정확한 답변: 1.0
-                    - 의미적으로 유사한 답변: 0.8
-                    - 부분적으로 맞는 답변: 0.5
+                    - 정확한 답변이거나 사투리 혹은 영어로 답변한 경우: 1.0
                     - 완전히 틀린 답변: 0.0
 
-                    0.0부터 1.0 사이의 점수만 반환해주세요."""
+                    0.0과 1.0만 반환해주세요."""
                     
                     score_details = {
                         "target_object": actual_target_object,
                         "user_answer": current_message,
                         "question": last_question
-                    }
-                else:
-                    # 기존 방식으로 폴백
-                    expected_answers = scoring_criteria.get("expected_answers", [])
-                    system_msg = f"""답변이 다음 예상 정답들 중 하나와 의미적으로 일치하는지 평가해주세요.
-
-                    예상 정답들: {', '.join(expected_answers)}
-                    사용자 답변: "{current_message}"
-
-                    평가 기준:
-                    - 정확한 단어 일치: 1.0
-                    - 사투리나 영어로 답변한 경우: 1.0
-                    - 완전히 틀린 답변: 0.0
-
-                    0.0부터 1.0 사이의 점수만 반환해주세요."""
-                    
-                    score_details = {
-                        "expected_answers": expected_answers,
-                        "user_answer": current_message,
-                        "fallback_mode": True
                     }
 
                 response = self.llm.invoke([SystemMessage(content=system_msg)])
@@ -392,27 +396,10 @@ class LangGraphDementiaChatbot:
                 print(f"날짜 정확성 채점: {score:.2f}")
                 
             else:
-                # 일반적인 LLM 기반 평가
-                system_msg = f"""다음 assessment 질문에 대한 답변을 0-1 사이로 평가해주세요.
-
-                질문: "{last_question}"
-                답변: "{current_message}"
-
-                평가 기준:
-                - 질문에 직접적으로 답변함: 1.0
-                - 질문과 관련없는 답변을 하거나 오답: 0.0
-
-                0.0부터 1.0 사이의 점수만 반환해주세요."""
-
-                response = self.llm.invoke([SystemMessage(content=system_msg)])
-                
-                numbers = re.findall(r'0\.\d+|1\.0|0\.0', response.content)
-                if numbers:
-                    score = float(numbers[0])
-                else:
-                    score = 0.0
-                
-                score_details = {"llm_evaluation": response.content}
+                # 알 수 없는 scoring_type에 대한 예외 처리
+                print(f"알 수 없는 채점 방식: {scoring_type}")
+                score = 0.0
+                score_details = {"error": f"Unknown scoring_type: {scoring_type}"}
                 
         except Exception as e:
             print(f"채점 실패: {e}")
@@ -425,11 +412,95 @@ class LangGraphDementiaChatbot:
             "assessment_score": score,
             "score_details": score_details
         }
+    
+    def _process_registration_answer(self, state: ConversationState):
+        """레지스트레이션 답변 처리: 아이템 추출 및 recall 예약"""
+        current_message = state["current_message"]
+        current_turn = state.get("turn_counter", 0)
+        
+        # 답변에서 3개 아이템 추출
+        items = self._extract_items_from_registration_answer(current_message)
+        
+        if len(items) >= 3:
+            # Registration 아이템 저장 및 recall 예약
+            recall_delay = ASSESSMENT_TASKS["registration"]["scoring_criteria"]["recall_delay_turns"]
+            recall_turn = current_turn + recall_delay
+            
+            state["pending_recall_items"] = items
+            state["recall_scheduled_turn"] = recall_turn
+            state["recall_question_type"] = "싫어하는"  # 기본값
+            
+            print(f"Registration 아이템 저장: {items}")
+            print(f"Recall 예약: {recall_turn}턴에 '싫어하는 순서' 질문 예정")
+        else:
+            print(f"Registration 아이템 추출 실패: {len(items)}개 발견 (최소 3개 필요)")
+    
+    def _extract_items_from_registration_answer(self, answer: str) -> List[str]:
+        """레지스트레이션 답변에서 아이템 추출"""
+        # LLM을 사용하여 답변에서 나열된 아이템들 추출
+        try:
+            system_msg = f"""사용자의 registration 답변에서 3개 아이템을 순서대로 추출해주세요.
+            
+            사용자 답변: "{answer}"
+            
+            예시:
+            입력: "사과를 제일 좋아하고, 그 다음에 딸기, 마지막에 바나나예요"
+            출력: ["사과", "딸기", "바나나"]
+            
+            JSON 배열 형태로만 반환해주세요: ["아이템1", "아이템2", "아이템3"]
+            """
+            
+            response = self.llm.invoke([SystemMessage(content=system_msg)])
+            
+            # JSON 배열 추출
+            import json
+            items_text = response.content.strip()
+            if items_text.startswith('[') and items_text.endswith(']'):
+                items = json.loads(items_text)
+                return [str(item).strip() for item in items if item]
+            else:
+                # JSON이 아니라면 단순 텍스트 처리
+                items = [item.strip('"').strip() for item in items_text.split(',')]
+                return items[:3]  # 최대 3개
+                
+        except Exception as e:
+            print(f"아이템 추출 실패: {e}")
+            # 간단한 키워드 기반 추출 시도
+            common_items = ['사과', '배', '포도', '콩', '생선', '고추', '어머니', '아버지', '형', '누나']
+            found_items = []
+            for item in common_items:
+                if item in answer and len(found_items) < 3:
+                    found_items.append(item)
+            return found_items
 
     def calculate_task_scores(self, state: ConversationState) -> ConversationState:
         message = state["current_message"]
         messages = state["messages"]
         photo_metadata = state.get("photo_metadata", {})
+        
+        # 턴 카운터 초기화 및 업데이트
+        current_turn = state.get("turn_counter", 0) + 1
+        state["turn_counter"] = current_turn
+        
+        # Recall 예약 확인
+        recall_scheduled_turn = state.get("recall_scheduled_turn", -1)
+        pending_recall_items = state.get("pending_recall_items", [])
+        
+        print(f"현재 턴: {current_turn}, Recall 예약 턴: {recall_scheduled_turn}, 대기 아이템: {pending_recall_items}")
+        
+        # Recall 시간인지 확인
+        if recall_scheduled_turn > 0 and current_turn >= recall_scheduled_turn and pending_recall_items:
+            print(f"Recall 시간 도래! {len(pending_recall_items)}개 아이템으로 recall 평가 시작")
+            return {
+                **state, 
+                "task_scores": {
+                    "registration": 0.0, 
+                    "recall": 1.0,  # recall을 최고 점수로
+                    "Naming": 0.0, 
+                    "time_orientation": 0.0
+                },
+                "registration_phase": "recall"
+            }
         
         # 첫 턴 정확히 감지 (전체 메시지 히스토리가 비어있거나, 사용자 메시지가 없는 경우)
         user_message_count = len([msg for msg in messages if isinstance(msg, HumanMessage)])
@@ -442,10 +513,12 @@ class LangGraphDementiaChatbot:
             return {
                 **state, 
                 "task_scores": {
-                    "registration_recall": 0.0, 
+                    "registration": 0.0, 
+                    "recall": 0.0,
                     "Naming": 0.0, 
                     "time_orientation": 1.0
-                }
+                },
+                "registration_phase": "none"
             }
         
         # 첫 턴이 아닌 경우 기존 로직 실행
@@ -460,8 +533,9 @@ class LangGraphDementiaChatbot:
 
         다음 평가 영역들과의 관련도를 0-1 사이로 평가해주세요:
 
-        1. registration_recall: 기억 등록은 즉각적인 기억력을 평가하는 항목.
+        1. registration: 기억 등록 평가 - 즉각적인 기억력을 평가하는 항목.
         messages 최근 5개 turn 내에서 동일 선상에서 비교될 수 있는 단어/고유명사가 3개 이상 나오면 본 평가내역을 활용.
+        registration 이후 5턴 후에 recall 평가가 예약됨.
 
         2. Naming: 사물 이름 맞추기 (사진 속 객체 언급). 표시된 사물의 이름을 기억해내는 능력을 평가합니다. 
         사진 메타데이터에서 위치관계가 명확한 사물이나 사물을 포함하는 사람이 언급된 경우 본 평가 항목을 사용.
@@ -473,19 +547,27 @@ class LangGraphDementiaChatbot:
         3. time_orientation: 현재 세션 중간이므로 측정하지 않습니다. (점수: 0.0)
 
         JSON 형식으로만 응답:
-        {{"registration_recall": 0.0, "Naming": 0.0, "time_orientation": 0.0}}"""
+        {{"registration": 0.0, "recall": 0.0, "Naming": 0.0, "time_orientation": 0.0}}"""
 
         try:
             response = self.llm.invoke([SystemMessage(content=prompt)])
             import json
             task_scores = json.loads(response.content.strip())
             
-            # 첫 턴이 아닐 때는 time_orientation 강제로 0.0 설정
+            # 첫 턴이 아닐 때는 time_orientation 0.0 강제
             task_scores["time_orientation"] = 0.0
+            
+            # recall이 대기중이 아니라면 recall 점수도 0.0으로 설정
+            if not (recall_scheduled_turn > 0 and current_turn >= recall_scheduled_turn and pending_recall_items):
+                task_scores["recall"] = 0.0
             
         except Exception as e:
             print(f"태스크 점수 계산 실패: {e}")
-            task_scores = {"registration_recall": 0.0, "Naming": 0.0, "time_orientation": 0.0}
+            task_scores = {"registration": 0.0, "recall": 0.0, "Naming": 0.0, "time_orientation": 0.0}
+            
+        # registration_phase 설정
+        if "registration_phase" not in state:
+            state["registration_phase"] = "none"
         
         return {**state, "task_scores": task_scores}
 
@@ -688,29 +770,56 @@ class LangGraphDementiaChatbot:
             print(f"  {i}. {q}")
         
         return {**state, "generated_questions": generated_questions}
+    
+    def _generate_recall_questions(self, state: ConversationState) -> List[str]:
+        """대기중인 recall 아이템들로 recall 질문 생성"""
+        pending_items = state.get("pending_recall_items", [])
+        recall_question_type = state.get("recall_question_type", "싫어하는")
+        
+        if not pending_items:
+            print("Recall 아이템이 없어서 기본 recall 질문 사용")
+            return ["아까 말씀하신 것들을 기억하시나요?"]
+        
+        # 아이템들을 문자열로 변환
+        items_str = ', '.join(pending_items)
+        
+        # recall 질문 템플릿에서 선택
+        templates = ASSESSMENT_TASKS["recall"]["example_question_templates"]
+        
+        generated_questions = []
+        for template in templates:
+            question = template.format(items=items_str)
+            generated_questions.append(question)
+        
+        print(f"Recall 질문 생성: {len(generated_questions)}개 (아이템: {items_str})")
+        for i, q in enumerate(generated_questions, 1):
+            print(f"  {i}. {q}")
+        
+        return generated_questions
 
     def _generate_naming_questions_from_photo(self, photo_metadata: Dict[str, Any], messages: List, current_message: str) -> List[str]:
         """사진 메타데이터를 기반으로 Naming 평가 질문 생성 (img_description.py 활용)"""
+        
         generated_questions = []
         
-        try:
-            # 사진에서 위치관계가 명확한 객체들 추출
-            naming_objects = self._extract_naming_objects_from_photo(photo_metadata)
+        
+        # 사진에서 위치관계가 명확한 객체들 추출
+        naming_objects = self._extract_naming_objects_from_photo(photo_metadata)
             
-            if not naming_objects:
-                print("사진에서 naming 가능한 객체를 찾을 수 없음 - 기본 질문 사용")
-                return [
+        if not naming_objects:
+            print("사진에서 naming 가능한 객체를 찾을 수 없음 - 기본 질문 사용")
+            return [
                     "사진에서 보이는 물건의 이름을 말씀해주세요.",
                     "사진 속에 있는 것들 중 아는 것이 있나요?",
                     "이 사진에서 무엇이 보이시나요?"
-                ]
+            ]
             
-            # 사진 구조 정보로 더 구체적인 질문 생성
-            objects_info = photo_metadata.get("objects", [])
-            people_info = photo_metadata.get("people", [])
+        # 사진 구조 정보로 더 구체적인 질문 생성
+        objects_info = photo_metadata.get("objects", [])
+        people_info = photo_metadata.get("people", [])
             
-            # LLM을 통해 맥락적인 naming 질문 생성
-            prompt = f"""
+        # LLM을 통해 맥락적인 naming 질문 생성
+        prompt = f"""
             사진 메타데이터를 바탕으로 자연스러운 사물 이름 맞추기 질문을 5개 생성해주세요.
             
             사진 속 객체 정보:
@@ -733,28 +842,17 @@ class LangGraphDementiaChatbot:
             각 질문을 새 줄로 구분하여 번호 없이 나열해주세요:
             """
             
-            response = self.llm.invoke([SystemMessage(content=prompt)])
-            generated_questions = [q.strip() for q in response.content.split('\n') if q.strip()]
+        response = self.llm.invoke([SystemMessage(content=prompt)])
+        generated_questions = [q.strip() for q in response.content.split('\n') if q.strip()]
             
-            # 생성된 질문이 부족하면 기본 질문으로 보완
-            if len(generated_questions) < 3:
+        # 생성된 질문이 부족하면 기본 질문으로 보완
+        if len(generated_questions) < 3:
                 default_questions = [
                     f"사진에서 {naming_objects[0]}은/는 무엇인가요?" if naming_objects else "사진에 있는 물건의 이름은 무엇인가요?",
                     "이 사진에서 가장 눈에 띄는 물건의 이름을 말씀해주세요.",
                     "사진 속에 있는 것 중 하나의 이름을 말해주세요."
-                ]
-                generated_questions.extend(default_questions[:5-len(generated_questions)])
-            
-        except Exception as e:
-            print(f"사진 기반 naming 질문 생성 실패: {e}")
-            # 폴백: 기본 naming 질문들
-            generated_questions = [
-                "사진에서 보이는 물건의 이름을 말씀해주세요.",
-                "사진 속에 있는 것들 중 아는 것이 있나요?",
-                "이 사진에서 무엇이 보이시나요?",
-                "사진 속 물건 중 하나의 이름을 말해주세요.",
-                "이 사진에서 가장 기억에 남는 물건은 무엇인가요?"
             ]
+                generated_questions.extend(default_questions[:5-len(generated_questions)])
         
         return generated_questions
 
@@ -959,7 +1057,6 @@ class LangGraphDementiaChatbot:
         
         # time_orientation 평가 후 몰입감 시간 여행 효과 확인
         if state.get("is_assessment_answer", False) and state.get("last_assessment_task") == "time_orientation":
-            print("time_orientation 평가 후 몰입감 시간 여행 효과 적용")
             
             # 사용자 답변에서 날짜 추출 시도
             user_date = self._extract_date_from_message(current_message)
@@ -974,9 +1071,7 @@ class LangGraphDementiaChatbot:
             # 사진 메타데이터 기반 질문 생성
             photo_question = self._generate_photo_based_question(photo_metadata)
             
-            immersive_transition = f"""{time_travel_intro}
-
-    {photo_question}"""
+            immersive_transition = f"""{time_travel_intro}  {photo_question}"""
             
             return {
                 **state,
@@ -984,7 +1079,6 @@ class LangGraphDementiaChatbot:
                 "response_type": "immersive_transition",
                 "workflow_stage": "time_travel_transition"
             }
-    
 
         
         # 워크플로우 단계 확인으로 캐싱 후 상황인지 판단
@@ -1038,69 +1132,6 @@ class LangGraphDementiaChatbot:
             "response_type": response_type,
             "workflow_stage": "casual_chat"
         }
-    
-    # == 날짜 계산 시스템
-    def _calculate_years_ago(self, photo_metadata: Dict[str, Any]) -> int:
-        """사진 메타데이터에서 몇 년 전 사진인지 계산"""
-        current_year = datetime.now().year
-        
-        # 메타데이터에서 연도 정보 찾기
-        possible_year_fields = [
-            'year', 'photo_year', 'taken_year', 'date_taken',
-            'exif_year', 'creation_year', 'timestamp_year'
-        ]
-        
-        photo_year = None
-        
-        # 메타데이터에서 연도 추출 시도
-        for field in possible_year_fields:
-            if field in photo_metadata:
-                try:
-                    value = photo_metadata[field]
-                    if isinstance(value, str):
-                        # 문자열에서 4자리 연도 추출
-                        year_match = re.search(r'(19|20)\d{2}', str(value))
-                        if year_match:
-                            photo_year = int(year_match.group())
-                            break
-                    elif isinstance(value, (int, float)):
-                        year = int(value)
-                        if 1900 <= year <= current_year:
-                            photo_year = year
-                            break
-                except (ValueError, TypeError):
-                    continue
-        
-        # 메타데이터에서 연도를 찾지 못한 경우 기본값
-        if photo_year is None:
-            # caption이나 description에서 연도 추출 시도
-            text_fields = ['caption', 'description', 'alt_text', 'title']
-            for field in text_fields:
-                if field in photo_metadata:
-                    text = str(photo_metadata[field])
-                    year_matches = re.findall(r'(19|20)\d{2}', text)
-                    if year_matches:
-                        try:
-                            photo_year = int(year_matches[-1])  # 마지막 연도 사용
-                            break
-                        except ValueError:
-                            continue
-        
-        # 여전히 연도를 찾지 못한 경우
-        if photo_year is None:
-            print("사진 연도 정보를 찾을 수 없음 - 기본값 20년 전 사용")
-            return 20
-        
-        years_ago = current_year - photo_year
-        
-        # 합리적인 범위 체크 (0-100년)
-        if years_ago < 0:
-            years_ago = 5  # 미래 연도면 최근으로 처리
-        elif years_ago > 100:
-            years_ago = 50  # 너무 오래전이면 적당히 조정
-        
-        print(f"사진 연도: {photo_year}, 현재로부터 {years_ago}년 전")
-        return years_ago
 
     def _generate_time_travel_intro(self, date_info: tuple, years_ago: int) -> str:
         """개선된 시간 여행 도입부 생성"""
@@ -1215,43 +1246,6 @@ class LangGraphDementiaChatbot:
             # 기본 질문 반환
             return "이 사진을 보니 어떤 기억이 떠오르시나요?"
 
-    # time_orientation 시작 질문도 개선
-    def start_conversation(self, photo_metadata: Dict[str, Any] = None) -> Dict[str, Any]:
-        """대화를 AI가 먼저 시작하는 함수 - 개선된 시나리오"""
-        print("=== AI 주도 대화 시작 ===")
-        
-        # 사진 연도에 따른 동적 질문 생성
-        years_ago = self._calculate_years_ago(photo_metadata or {})
-        
-        # 연도에 맞춘 질문 생성
-        time_orientation_question = f"{years_ago}년 전 그날로 기억 여행을 시작하려고 해요. 이 기록을 시작하는 오늘은 2025년 9월 며칠인가요?"
-        
-        print(f"\n{'AI 주도 시작 결과':=^60}")
-        print(f"AI 응답: {time_orientation_question}")
-        print(f"사진 연도: {years_ago}년 전")
-        print(f"응답 타입: assessment_immersive")
-        if photo_metadata:
-            print(f"사진 메타데이터: {len(photo_metadata)}개 필드")
-        
-        return {
-            "user_message": "",
-            "selected_task": "time_orientation",
-            "task_message_relevance": 1.0,
-            "generated_questions": [time_orientation_question],
-            "selected_question": time_orientation_question,
-            "question_message_relevance": 1.0,
-            "response_type": "assessment_immersive",
-            "ai_response": time_orientation_question,
-            "workflow_stage": "immersive_time_orientation",
-            "is_assessment_answer": False,
-            "last_assessment_question": "",
-            "last_assessment_task": "",
-            "assessment_score": 0.0,
-            "score_details": {},
-            "photo_metadata": photo_metadata or {}
-        }
-
-
     # === 캐싱 시스템 ===
     
     def _cache_question(self, task_name: str, question: str, context_score: float):
@@ -1314,50 +1308,20 @@ class LangGraphDementiaChatbot:
 자연스럽고 친근한 응답으로 대화를 이어가세요. "다음 메시지를 보내주시면" 같은 불필요한 안내는 하지 마세요."""
         
         # LangSmith 추적을 위해 ChatOpenAI 사용 (gpt-5-nano 시도)
-        try:
-            # gpt-5-nano로 시도 (간단한 메시지 구조)
-            nano_llm = ChatOpenAI(
-                model="gpt-5-nano",
-                openai_api_key=self.config.openai_api_key,
-                temperature=1.0,  # gpt-5-nano는 기본값 1만 지원
-                max_tokens=1000
-            )
+        
+        # gpt-5-nano로 시도 (간단한 메시지 구조)
+        nano_llm = ChatOpenAI(
+            model="gpt-5-nano",
+            openai_api_key=self.config.openai_api_key,
+            temperature=1.0,  # gpt-5-nano는 기본값 1만 지원
+            max_tokens=1000
+        )
             
-            simple_message = f"사용자 메시지에 자연스럽게 응답해주세요: {current_message}"
-            nano_response = nano_llm.invoke([HumanMessage(content=simple_message)])
+        simple_message = f"사용자 메시지에 자연스럽게 응답해주세요: {current_message}"
+        nano_response = nano_llm.invoke([HumanMessage(content=simple_message)])
             
-            print(f"gpt-5-nano (ChatOpenAI) 호출 성공: {nano_response.content}")
-            return nano_response.content
-            
-        except Exception as nano_error:
-            print(f"gpt-5-nano (ChatOpenAI) 실패: {nano_error}")
-            print("   gpt-3.5-turbo 폴백으로 전환...")
-            
-            # 폴백: LangChain으로 gpt-3.5-turbo 사용
-            try:
-                conversation_messages = [SystemMessage(content=enhanced_prompt)]
-                if messages:
-                    conversation_messages.extend(messages[::-2])
-                conversation_messages.append(HumanMessage(content=current_message))
-                
-                response = self.lightweight_llm.invoke(conversation_messages)
-                fallback_response = response.content.strip()
-                
-                print(f"LangChain 폴백 성공: {fallback_response}")
-                return fallback_response
-                
-            except Exception as e2:
-                print(f"LangChain 폴백도 실패: {e2}")
-                # 최종 폴백 응답들
-                fallback_responses = [
-                    "그렇구나! 더 얘기해 주세요~",
-                    "정말요? 재미있네요!",
-                    "우와! 그런 일이 있었구나!",
-                    "그래요? 신기해요!",
-                    "맞아요! 저도 그런 것 같아요!"
-                ]
-                import random
-                return random.choice(fallback_responses)
+        print(f"gpt-5-nano (ChatOpenAI) 호출 성공: {nano_response.content}")
+        return nano_response.content            
 
     # (임시) 노인 mimic 답변 노드
     def simulate_user_response(self, ai_question: str, conversation_context: List = None) -> str:
@@ -1387,37 +1351,24 @@ class LangGraphDementiaChatbot:
 답변: "오늘이... 25일이었나요? 정확히는 잘 모르겠어요."
 """
 
-        try:
-            # 대화 히스토리 구성
-            conversation_messages = [SystemMessage(content=user_simulation_prompt)]
+        
+        # 대화 히스토리 구성
+        conversation_messages = [SystemMessage(content=user_simulation_prompt)]
             
-            if conversation_context:
+        if conversation_context:
                 # 최근 3턴 정도만 참조
-                recent_context = conversation_context[-3:] if len(conversation_context) >= 3 else conversation_context
-                conversation_messages.extend(recent_context)
+            recent_context = conversation_context[-3:] if len(conversation_context) >= 3 else conversation_context
+            conversation_messages.extend(recent_context)
             
-            # AI 질문 추가
-            conversation_messages.append(HumanMessage(content=f"질문: {ai_question}"))
+        # AI 질문 추가
+        conversation_messages.append(HumanMessage(content=f"질문: {ai_question}"))
             
-            # (임시) 노인 사용자 답변 생성 
-            response = self.response_simulator_llm.invoke(conversation_messages)
-            simulated_response = response.content.strip()
+        # (임시) 노인 사용자 답변 생성 
+        response = self.response_simulator_llm.invoke(conversation_messages)
+        simulated_response = response.content.strip()
             
-            print(f"시뮬레이션 답변 생성: {simulated_response}")
-            return simulated_response
-            
-        except Exception as e:
-            print(f"답변 시뮬레이션 실패: {e}")
-            # 폴백 답변들 (노인 스타일)
-            fallback_responses = [
-                "그렇네요... 잘 기억이 안 나네요.",
-                "음... 뭐라고 해야 할까요?",
-                "아, 그거 말이지요... 생각이 안 나네요.",
-                "맞아요, 그런 것 같아요.",
-                "글쎄요... 정확히는 모르겠어요."
-            ]
-            import random
-            return random.choice(fallback_responses)
+        print(f"시뮬레이션 답변 생성: {simulated_response}")
+        return simulated_response
 
     # === 조건부 엣지 결정 함수들 ===
     
@@ -1466,18 +1417,13 @@ class LangGraphDementiaChatbot:
     
     def start_conversation(self, photo_metadata: Dict[str, Any] = None) -> Dict[str, Any]:
         """대화를 AI가 먼저 시작하는 함수 - 개선된 동적 연도 시나리오"""
-        print("=== AI 주도 대화 시작 ===")
         
         # 사진 연도에 따른 동적 질문 생성
         years_ago = self._calculate_years_ago(photo_metadata or {})
         
         # 연도에 맞춘 질문 생성
         time_orientation_question = f"{years_ago}년 전 그날로 기억 여행을 시작하려고 해요. 이 기록을 시작하는 오늘은 2025년 9월 며칠인가요?"
-        
-        print(f"\n{'AI 주도 시작 결과':=^60}")
-        print(f"AI 응답: {time_orientation_question}")
-        print(f"사진 연도: {years_ago}년 전")
-        print(f"응답 타입: assessment_immersive")
+
         if photo_metadata:
             print(f"사진 메타데이터: {len(photo_metadata)}개 필드")
         
@@ -1542,7 +1488,13 @@ class LangGraphDementiaChatbot:
             "cached_question_score": 0.0,
             "reused_question": "",
             # 사진 메타데이터
-            "photo_metadata": photo_metadata or {}
+            "photo_metadata": photo_metadata or {},
+            # Registration-Recall 분리 필드 초기화
+            "turn_counter": 0,
+            "pending_recall_items": [],
+            "recall_scheduled_turn": -1,
+            "recall_question_type": "싫어하는",
+            "registration_phase": "none"
         }
         
         # 그래프 실행

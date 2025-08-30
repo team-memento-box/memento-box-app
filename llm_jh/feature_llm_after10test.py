@@ -1,5 +1,5 @@
 """
-10. test for gpt-5-nano 응답 시간 단축
+13. test for naming evaluation with img_description.py integration
 """
 
 import os
@@ -7,7 +7,7 @@ import time
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, AIMessage
 
-from feature_llm_12 import LangGraphDementiaChatbot, ChatbotConfig
+from feature_llm_14 import LangGraphDementiaChatbot, ChatbotConfig
 
 load_dotenv()
 API_KEY = os.getenv("GPT_API_KEY")
@@ -19,25 +19,68 @@ bot = LangGraphDementiaChatbot(config)
 # 빈 대화 히스토리로 처음 시작
 conversation_history = []
 turn_count = 0
-MAX_TURNS = 2  # 최대 턴 제한 (몰입감 시나리오 확인을 위해 증가)
+MAX_TURNS = 3  # Naming 평가 테스트를 위해 턴 수 증가
 
-# 샘플 사진 메타데이터 (전역 변수)
+# 샘플 사진 메타데이터 (img_description.py 형식으로 수정 - Naming 테스트용)
 sample_photo_metadata = {
-    "caption": "공원에서 강아지와 함께 놀고 있는 어린 아이들의 모습",
-    "dense_captions": [
-        "빨간색 공을 들고 있는 아이", 
-        "갈색 강아지가 꼬리를 흔들며 뛰어다니는 모습",
-        "나무 그늘 아래 벤치에 앉아 있는 어른들"
+    "scene": {
+        "location": "실내 거실 (생일 파티용으로 꾸며짐)",
+        "event": "생일 파티",
+        "core_point": "한 아이의 생일을 가족이 축하하는 장면"
+    },
+    "social_context": {
+        "atmosphere": "즐겁고 따뜻한 가족 중심의 축제 분위기",
+        "core_point": "가족이 함께 생일을 축하하며 행복한 시간을 보냄"
+    },
+    "people": [
+        {
+            "role": "성인 여성 (어머니 추정)",
+            "action": "어린이를 옆에서 지켜봄",
+            "expression": "미소",
+            "items": []
+        },
+        {
+            "role": "성인 남성 (아버지 추정)",
+            "action": "아이 옆에 서서 축하 참여",
+            "expression": "웃음",
+            "items": []
+        },
+        {
+            "role": "어린이 A (생일 주인공)",
+            "action": "케이크 앞에 앉아 있음, 소원을 빌 준비",
+            "expression": "기대, 즐거움",
+            "items": ["생일 모자"]
+        },
+        {
+            "role": "어린이 B (형제/자매)",
+            "action": "옆에서 함께 축하",
+            "expression": "미소",
+            "items": ["파티 모자"]
+        }
     ],
-    "mood": "즐겁고 평화로운",
-    "time_period": "1990년대 후반",
-    "key_objects": ["빨간 공", "강아지", "벤치", "나무"],
-    "people_description": "7-8세 정도의 어린 아이 2명과 성인 2명",
-    "people_count": 4,
-    "time_of_day": "오후",
+    "objects": [
+        {
+            "name": "생일 케이크",
+            "location": "테이블 중앙",
+            "relation": {
+                "on_top": ["초 5개"],
+                "nearby": ["선물 상자 2개", "쿠키 접시", "오렌지 주스 컵 2개"]
+            }
+        },
+        {
+            "name": "풍선",
+            "location": "배경 벽 장식",
+            "relation": {}
+        },
+        {
+            "name": "파티 모자",
+            "location": "각 인물 머리",
+            "relation": {"worn_by": ["어린이 A", "어린이 B", "어머니", "아버지"]}
+        }
+    ],
     # 연도 정보 추가
-    "year": 1998,
-    "date_taken": "1998-09-15"
+    "year": 2003,
+    "date_taken": "2003-09-15"
 }
 
 def run_turn(user_message: str, simulate_response: bool = False):
@@ -106,15 +149,36 @@ def run_turn(user_message: str, simulate_response: bool = False):
     print(f"처리 시간: {elapsed:.2f}초")
     print(f"응답 타입: {result.get('response_type')}")
     print(f"워크플로우 단계: {result.get('workflow_stage')}")
+    print(f"선택된 태스크: {result.get('selected_task')}")
+    print(f"태스크 관련성: {result.get('task_message_relevance', 0.0):.3f}")
     print(f"캐시 여부: {result.get('cached_question_found')}")
     if result.get("cached_question_found"):
         print(f"   ↳ 재사용 질문: {result.get('reused_question')}")
         print(f"   ↳ 캐시 점수: {result.get('cached_question_score'):.3f}")
     
-    # 몰입감 시나리오 관련 정보 출력
+    # 생성된 질문들 출력 (Naming 테스트)
+    if result.get('generated_questions'):
+        print(f"생성된 질문 수: {len(result.get('generated_questions'))}")
+        for i, q in enumerate(result.get('generated_questions', []), 1):
+            print(f"   {i}. {q}")
+    
+    # Assessment 답변 관련 정보 출력
     if result.get('is_assessment_answer'):
         print(f"Assessment 답변 감지: {result.get('last_assessment_task')}")
         print(f"채점 점수: {result.get('assessment_score', 0.0):.2f}/1.0")
+        score_details = result.get('score_details', {})
+        if score_details:
+            print(f"채점 세부사항: {score_details}")
+    
+    # Naming 평가 관련 특별 정보 출력
+    if result.get('selected_task') == 'Naming':
+        print("=== Naming 평가 특별 정보 ===")
+        # 사진에서 추출된 naming 객체들 출력
+        naming_objects = bot._extract_naming_objects_from_photo(sample_photo_metadata)
+        print(f"사진에서 추출된 naming 객체들: {naming_objects}")
+        if result.get('selected_question'):
+            print(f"최종 선택된 질문: {result.get('selected_question')}")
+            print(f"질문-메시지 관련성: {result.get('question_message_relevance', 0.0):.3f}")
     
     # AI 자동 응답 시뮬레이션 (모든 응답에 대해 작동)
     if simulate_response:
@@ -169,14 +233,19 @@ if __name__ == "__main__":
     print_history()
     
     print("\n" + "=" * 60)
-    print("\nAI끼리 완전 자동 대화 시작 - 몰입감 시나리오 테스트")
-    print("처음 대화 시작부터 time_orientation 평가와 몰입감 효과 확인...")
+    print("\nAI끼리 완전 자동 대화 시작 - Naming 평가 테스트")
+    print("처음 대화 시작부터 Naming 평가 질문 생성과 채점 확인...")
 
     # AI가 먼저 대화 시작 (time_orientation 몰입감 시나리오)
     print("=== AI 주도 대화 시작 테스트 ===")
     print(f"사진 메타데이터 정보: {len(sample_photo_metadata)}개 필드")
-    print(f"  - 주요 객체: {sample_photo_metadata['key_objects']}")
-    print(f"  - 인물 수: {sample_photo_metadata['people_count']}명")
+    
+    # naming 객체들 미리 확인
+    naming_objects = bot._extract_naming_objects_from_photo(sample_photo_metadata)
+    print(f"  - Naming 가능한 객체들: {naming_objects}")
+    print(f"  - 사진 장소: {sample_photo_metadata['scene']['location']}")
+    print(f"  - 사진 이벤트: {sample_photo_metadata['scene']['event']}")
+    print(f"  - 인물 수: {len(sample_photo_metadata['people'])}명")
     
     start_result = bot.start_conversation(sample_photo_metadata)
     print(f"AI 시작 메시지: {start_result['ai_response']}")
@@ -201,3 +270,51 @@ if __name__ == "__main__":
     print_history()
     
     print("\nAI끼리 대화 시뮬레이션 완료!")
+    
+    # Naming 평가 특별 테스트 추가 
+    print("\n" + "=" * 60)
+    print("=== Naming 평가 특별 테스트 ===")
+    print("사진에서 객체를 직접 언급하여 Naming 평가 트리거 테스트")
+    
+    # 직접 케이크나 촛불을 언급하는 메시지로 Naming 평가 유도
+    naming_trigger_messages = [
+        "사진에 케이크가 보이네요!",  
+        "촛불이 몇 개나 있을까요?",
+        "생일 모자를 쓴 아이가 귀여워요",
+        "이 파티 분위기가 좋네요!"
+    ]
+    
+    for i, msg in enumerate(naming_trigger_messages, 1):
+        print(f"\n--- Naming 트리거 테스트 {i}/{len(naming_trigger_messages)} ---")
+        print(f"테스트 메시지: {msg}")
+        
+        # 새로운 대화 히스토리로 테스트 (기존 히스토리 백업)
+        backup_history = conversation_history.copy()
+        backup_turn_count = turn_count
+        
+        # 테스트를 위한 초기화
+        conversation_history.clear()
+        globals()['turn_count'] = 0
+        
+        # 테스트 실행
+        result = run_turn(msg, simulate_response=False)
+        
+        print(f"결과 - 선택된 태스크: {result.get('selected_task')}")
+        print(f"결과 - 태스크 관련성: {result.get('task_message_relevance', 0.0):.3f}")
+        
+        if result.get('selected_task') == 'Naming':
+            print("✅ Naming 평가 성공적으로 트리거됨!")
+            if result.get('generated_questions'):
+                print(f"생성된 Naming 질문 수: {len(result.get('generated_questions'))}")
+                print("생성된 질문들:")
+                for j, q in enumerate(result.get('generated_questions', []), 1):
+                    print(f"  {j}. {q}")
+        else:
+            print("❌ Naming 평가 트리거되지 않음")
+        
+        # 히스토리 복원
+        conversation_history = backup_history
+        globals()['turn_count'] = backup_turn_count
+    
+    print("\n=== Naming 평가 특별 테스트 완료 ===")
+    print("Naming 평가 통합 테스트가 모두 완료되었습니다.")
