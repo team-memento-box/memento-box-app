@@ -382,6 +382,8 @@ class ReportItemWidget extends StatelessWidget {
       ),
     );
   }
+
+
 }
 
 // 경고 메시지 위젯
