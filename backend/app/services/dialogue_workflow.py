@@ -114,8 +114,10 @@ class DialogueWorkflow:
         
         # 노드 추가
         workflow.add_node("init_state", self.init_state_node)
+        workflow.add_node("orientation_naming", self.orientation_naming_node)
         workflow.add_node("router", self.router_node)
         workflow.add_node("standard_response", self.standard_response_node)
+        workflow.add_node("bridge", self.bridge_generation_node)
         workflow.add_node("cache_retrieve", self.cache_retrieve_and_evaluate_node)
         workflow.add_node("fallback", self.fallback_node)
         
@@ -123,6 +125,8 @@ class DialogueWorkflow:
         workflow.set_entry_point("init_state")
         
         # 엣지 정의
+        workflow.add_edge("init_state", "orientation_naming")
+        workflow.add_edge("orientation_naming", END)
         workflow.add_edge("init_state", "router")
         workflow.add_conditional_edges(
             "router",
@@ -137,13 +141,15 @@ class DialogueWorkflow:
             "cache_retrieve",
             self._cache_decision,
             {
-                "use_cache": END,
+                "use_cache": "bridge", 
                 "use_fallback": "fallback"
             }
         )
+        workflow.add_edge("bridge", END)
         workflow.add_edge("fallback", END)
         
         return workflow.compile()
+    
     
     def init_state_node(self, state: GraphState) -> GraphState:
         """상태 초기화 노드: DB에서 대화 기록 및 사진 정보 조회"""
@@ -222,6 +228,9 @@ class DialogueWorkflow:
             state["session_id"] = conversation_id
         
         return state
+
+    def orientation_naming_node(self, state: GraphState) -> GraphState:
+        pass
     
     def router_node(self, state: GraphState) -> GraphState:
         """라우터 노드: 인지기능 평가 질문 삽입 여부 결정"""
@@ -327,6 +336,9 @@ class DialogueWorkflow:
         
         return state
     
+    def bridge_generation_node(self, state: GraphState) -> GraphState:
+        pass
+
     def fallback_node(self, state: GraphState) -> GraphState:
         """대체 응답 처리 노드: 경량 LLM으로 응답 생성"""
         user_message = state["input_data"]["user_message"]
