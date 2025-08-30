@@ -1,39 +1,49 @@
 from dotenv import load_dotenv
-from openai import AzureOpenAI
 import os
 import base64
 import json
 
 from core.config import settings
+from langchain_openai import ChatOpenAI
 
 class ImageAnalyzer:
     """GPT-4o를 사용한 이미지 분석"""
     
     def __init__(self):
-        self.api_version = os.getenv("AZURE_OPENAI_API_VERSION")
-        self.azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-        self.api_key = os.getenv("AZURE_OPENAI_KEY")
-        self.deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT")
+        self.api_key = os.getenv("OPENAI_API_KEY")
+        if not self.api_key:
+            raise ValueError("OPENAI_API_KEY environment variable is not set")
 
         # LangSmith 설정
         self._setup_langsmith()
+        
+        # LangSmith 메타데이터 설정
+        langsmith_tracing = settings.LANGSMITH_TRACING and settings.LANGSMITH_TRACING.lower() == "true"
+        langsmith_metadata = {
+            "service": "image_analyzer",
+            "version": "1.0",
+            "environment": os.getenv("ENVIRONMENT", "development")
+        }
 
-        self.client = AzureOpenAI(
-            api_version=self.api_version,
-            azure_endpoint=self.azure_endpoint,
+        self.client = ChatOpenAI(
+            model="gpt-4o",
             api_key=self.api_key,
+            temperature=0.3,
+            max_tokens=1000,
+            metadata=langsmith_metadata if langsmith_tracing else None
         )
     
     def _setup_langsmith(self):
         """LangSmith 추적 설정"""
-        if settings.LANGSMITH_TRACING and settings.LANGSMITH_TRACING.lower() == "true":
-            os.environ["LANGCHAIN_TRACING_V2"] = settings.LANGSMITH_TRACING
-            if settings.LANGSMITH_ENDPOINT:
-                os.environ["LANGCHAIN_ENDPOINT"] = settings.LANGSMITH_ENDPOINT
-            if settings.LANGSMITH_API_KEY:
-                os.environ["LANGCHAIN_API_KEY"] = settings.LANGSMITH_API_KEY
-            if settings.LANGSMITH_PROJECT:
-                os.environ["LANGCHAIN_PROJECT"] = settings.LANGSMITH_PROJECT
+        # LangSmith 환경변수 설정 (LangChain이 자동으로 읽도록)
+        if settings.LANGSMITH_TRACING:
+            os.environ["LANGSMITH_TRACING"] = settings.LANGSMITH_TRACING
+        if settings.LANGSMITH_API_KEY:
+            os.environ["LANGSMITH_API_KEY"] = settings.LANGSMITH_API_KEY
+        if settings.LANGSMITH_PROJECT:
+            os.environ["LANGSMITH_PROJECT"] = settings.LANGSMITH_PROJECT
+        if settings.LANGSMITH_ENDPOINT:
+            os.environ["LANGSMITH_ENDPOINT"] = settings.LANGSMITH_ENDPOINT
     
     def analyze_image(self, image_path):
         """이미지 분석"""
@@ -44,11 +54,11 @@ class ImageAnalyzer:
             return None
         
         try:
-            response = self.client.chat.completions.create(
-                model=self.deployment,
-                messages=[{
-                    "role": "user",
-                    "content": [{
+            from langchain_core.messages import HumanMessage
+            
+            messages = [
+                HumanMessage(content=[
+                    {
                         "type": "text",
                         "text": """이미지를 분석해서 JSON으로 답해주세요:
 {
@@ -61,16 +71,16 @@ class ImageAnalyzer:
     "people_count": 숫자,
     "time_of_day": "시간대"
 }"""
-                    }, {
+                    },
+                    {
                         "type": "image_url",
                         "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
-                    }]
-                }],
-                max_tokens=1000,
-                temperature=0.3
-            )
+                    }
+                ])
+            ]
             
-            response_text = response.choices[0].message.content
+            response = self.client.invoke(messages)
+            response_text = response.content
             
             # JSON 추출
             if "```json" in response_text:
