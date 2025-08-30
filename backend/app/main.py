@@ -9,7 +9,7 @@ from services.dialogue_workflow import DialogueWorkflow, WorkflowInput
 from core.auth import get_supabase_user
 from core.config import supabase_admin
 from routers import chat, conversation  # AI 전용 라우터들
-from routers import openai # fish_speech
+from routers import openai # fish_speech 라우터터
 
 load_dotenv()
 app = FastAPI(title="Memento Box AI API", description="AI 전용 API - 채팅, 이미지 분석, 음성 합성")
