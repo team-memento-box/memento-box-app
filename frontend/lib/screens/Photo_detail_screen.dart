@@ -210,6 +210,31 @@ class _PhotoDetailScreenState extends State<PhotoDetailScreen> {
                 // 버튼들
                 Row(
                   children: [
+                    // 테스트용 백그라운드 작업 버튼 추가
+                    if (!isGuardian) // 환자용 UI에서만 표시
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            await _testBackgroundStoryGeneration();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFFF9500),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                          ),
+                          child: const Text(
+                            'TTS 테스트',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (!isGuardian) const SizedBox(width: 12),
                     Expanded(
                       child: isGuardian
                           ? ElevatedButton(
@@ -565,6 +590,97 @@ class _PhotoDetailScreenState extends State<PhotoDetailScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _testBackgroundStoryGeneration() async {
+    try {
+      print('🧪 TTS 테스트 시작');
+      
+      // 현재 사진의 활성 세션 조회
+      final userId = Provider.of<UserProvider>(context, listen: false).id;
+      if (userId == null) {
+        _showErrorSnackBar('사용자 정보를 찾을 수 없습니다.');
+        return;
+      }
+      
+      final response = await SupabaseService.client
+          .from('sessions')
+          .select('id')
+          .eq('user_id', userId)
+          .contains('selected_photos', [widget.photoData['photo_id']])
+          .eq('status', 'active')
+          .order('created_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+      
+      if (response == null) {
+        _showErrorSnackBar('활성 세션을 찾을 수 없습니다. 먼저 대화를 진행해주세요.');
+        return;
+      }
+      
+      final sessionId = response['id'];
+      print('✅ 활성 세션 발견: $sessionId');
+      
+      // JWT 토큰 가져오기
+      final session = SupabaseService.client.auth.currentSession;
+      if (session == null || session.accessToken.isEmpty) {
+        _showErrorSnackBar('로그인이 필요합니다.');
+        return;
+      }
+      
+      // 백그라운드 작업 시작
+      final baseUrl = dotenv.env['BASE_URL'];
+      if (baseUrl == null) {
+        _showErrorSnackBar('BASE_URL 환경변수가 설정되지 않았습니다.');
+        return;
+      }
+      
+      final apiResponse = await http.post(
+        Uri.parse('$baseUrl/api/openai/story/process-background'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${session.accessToken}',
+        },
+        body: jsonEncode({
+          'session_id': sessionId,
+          'fish_speech_endpoint': 'http://gpu-server:8000/tts/generate',
+        }),
+      );
+      
+      if (apiResponse.statusCode == 200) {
+        final result = jsonDecode(apiResponse.body);
+        print('✅ 백그라운드 작업 시작됨: ${result['job_id']}');
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('스토리 생성이 백그라운드에서 시작되었습니다.\n작업 ID: ${result['job_id']}'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
+      } else {
+        print('❌ 백그라운드 작업 시작 실패: ${apiResponse.statusCode}');
+        print('응답: ${apiResponse.body}');
+        _showErrorSnackBar('백그라운드 작업 시작에 실패했습니다: ${apiResponse.statusCode}');
+      }
+    } catch (e) {
+      print('❌ TTS 테스트 실패: $e');
+      _showErrorSnackBar('TTS 테스트 실패: $e');
+    }
+  }
+  
+  void _showErrorSnackBar(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
   }
 
   Future<Map<String, String?>> fetchSummaryAndOriginVoice(String photoId) async {

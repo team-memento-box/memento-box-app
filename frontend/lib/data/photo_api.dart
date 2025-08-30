@@ -270,7 +270,109 @@ class PhotoApi {
     }
   }
 
-  /// 최근 가족 구성원들의 사진 업로드 소식 조회
+  /// 최근 가족 구성원들의 사진 업로드 소식 조회 (대화 존재 여부 포함)
+  static Future<List<Map<String, dynamic>>> fetchRecentFamilyPhotoNewsWithConversations(String familyId, {int limit = 10}) async {
+    try {
+      print('📰 Fetching recent family photo news with conversations for family: $familyId');
+      
+      // 먼저 가족 구성원들의 정보 조회
+      final familyMembersOnly = await SupabaseService.client
+          .from('family_members')
+          .select('user_id, family_role')
+          .eq('family_id', familyId);
+      
+      if (familyMembersOnly.isEmpty) {
+        print('⚠️ No family members found for family: $familyId');
+        return [];
+      }
+      
+      // 각 사용자 정보를 개별적으로 조회
+      final familyMembers = <Map<String, dynamic>>[];
+      
+      for (final memberData in familyMembersOnly) {
+        final userId = memberData['user_id'];
+        final userInfo = await SupabaseService.client
+            .from('users')
+            .select('full_name, profile_image_url')
+            .eq('id', userId)
+            .maybeSingle();
+        
+        if (userInfo != null) {
+          familyMembers.add({
+            'user_id': userId,
+            'family_role': memberData['family_role'],
+            'users': userInfo,
+          });
+        }
+      }
+      
+      // 각 가족 구성원의 사진들과 대화 존재 여부를 함께 조회
+      List<Map<String, dynamic>> allPhotos = [];
+      
+      for (final member in familyMembers) {
+        final userId = member['user_id'];
+        final user = member['users'] as Map<String, dynamic>;
+        final familyRole = member['family_role'] ?? '가족';
+        
+        // 사진과 대화 존재 여부를 LEFT JOIN으로 한번에 조회
+        final photosWithConversations = await SupabaseService.client
+            .rpc('get_photos_with_conversation_status', params: {
+              'target_user_id': userId,
+              'photo_limit': limit
+            });
+        
+        print('🔍 Found ${photosWithConversations.length} photos for user: ${user['full_name']}');
+        
+        for (final photoData in photosWithConversations) {
+          // Private storage이므로 signed URL 사용
+          String? imageUrl;
+          try {
+            final signedUrl = await SupabaseService.client.storage
+                .from('photos')
+                .createSignedUrl(photoData['file_path'], 3600);
+            imageUrl = signedUrl;
+          } catch (e) {
+            // 실제 파일이 없으므로 테스트 이미지로 fallback
+            final photoId = photoData['id'] as String;
+            imageUrl = 'https://picsum.photos/400/300?random=${photoId.hashCode.abs()}';
+          }
+          
+          allPhotos.add({
+            'photo_id': photoData['id'],
+            'user_id': photoData['user_id'],
+            'user_name': user['full_name'] ?? '이름 없음',
+            'user_profile_image': user['profile_image_url'],
+            'family_role': familyRole,
+            'content': '새로운 사진 추가',
+            'image_url': imageUrl,
+            'upload_date': DateTime.parse(photoData['created_at']),
+            'original_filename': photoData['original_filename'],
+            'description': photoData['description'],
+            'tags': photoData['tags'],
+            'taken_at': photoData['taken_at'],
+            'has_conversation': photoData['has_conversation'] ?? false, // 대화 존재 여부 추가
+          });
+        }
+      }
+      
+      // 업로드 날짜순으로 정렬하고 제한
+      allPhotos.sort((a, b) => (b['upload_date'] as DateTime).compareTo(a['upload_date'] as DateTime));
+      if (allPhotos.length > limit) {
+        allPhotos = allPhotos.take(limit).toList();
+      }
+      
+      print('✅ Found ${allPhotos.length} recent photo uploads with conversation status');
+      return allPhotos;
+      
+    } catch (e) {
+      print('❌ Error fetching family photos with conversations: $e');
+      // RPC 함수가 없는 경우 기존 메서드로 폴백
+      print('🔄 Falling back to original method without conversation status');
+      return await fetchRecentFamilyPhotoNews(familyId, limit: limit);
+    }
+  }
+
+  /// 최근 가족 구성원들의 사진 업로드 소식 조회 (기존 메서드)
   static Future<List<Map<String, dynamic>>> fetchRecentFamilyPhotoNews(String familyId, {int limit = 10}) async {
     try {
       print('📰 Fetching recent family photo news for family: $familyId');

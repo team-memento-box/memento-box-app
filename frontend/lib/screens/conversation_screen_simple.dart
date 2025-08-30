@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../services/websocket_service.dart';
 import '../core/supabase_service.dart';
 import '../widgets/assistant_bubble.dart';
@@ -28,6 +30,7 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
   final TextEditingController _messageController = TextEditingController();
   final List<Map<String, dynamic>> _messages = [];
   String _conversationId = '';
+  String _sessionId = '';
   String _userId = 'temp_user';
   bool _isConnecting = false;
   bool _isProcessing = false;
@@ -63,6 +66,11 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
       print('📷 사진 정보 로드 시작...');
       await _loadPhotoData();
       print('📷 사진 정보 로드 완료');
+      
+      // 기존 활성 세션 조회
+      print('🔍 기존 세션 조회 시작...');
+      await _findActiveSession();
+      print('🔍 세션 조회 완료: $_sessionId');
       
       // WebSocket 연결 설정
       print('🔗 WebSocket 콜백 설정');
@@ -103,8 +111,41 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
       setState(() {
         _currentPhoto = Photo.fromSupabase(response);
       });
+      
+      // 사진의 user_id 가져와서 설정
+      if (response['user_id'] != null) {
+        _userId = response['user_id'];
+        print('🔑 사용자 ID 설정: $_userId');
+      }
     } catch (e) {
       print('사진 데이터 로드 실패: $e');
+    }
+  }
+  
+  Future<void> _findActiveSession() async {
+    try {
+      // 현재 사진과 사용자에 해당하는 활성 세션 조회
+      final response = await SupabaseService.client
+          .from('sessions')
+          .select('id')
+          .eq('user_id', _userId)
+          .contains('selected_photos', [widget.photoId])
+          .eq('status', 'active')
+          .order('created_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+      
+      if (response != null) {
+        _sessionId = response['id'];
+        print('✅ 기존 활성 세션 발견: $_sessionId');
+      } else {
+        print('❌ 기존 활성 세션 없음, 새 세션 생성 필요');
+        // 여기서는 일단 기존 로직 유지 (백엔드에서 세션 생성한다고 가정)
+        _sessionId = 'backend-generated-session-id';
+      }
+    } catch (e) {
+      print('❌ 세션 조회 실패: $e');
+      _sessionId = 'fallback-session-id';
     }
   }
 
@@ -222,6 +263,53 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
       print('✅ 입력 필드 클리어됨');
     }
   }
+  
+  Future<void> _handleBackPressed() async {
+    try {
+      print('🔙 뒤로가기 처리 시작');
+      
+      // 백그라운드 작업 시작 
+      // TODO: BASE_URL 환경변수 사용하도록 개선 필요
+      final response = await http.post(
+        Uri.parse('http://3.38.196.22:8000/api/openai/story/process-background'), // EC2 서버 IP
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${widget.jwtToken}',
+        },
+        body: jsonEncode({
+          'session_id': _sessionId,
+          'fish_speech_endpoint': 'http://gpu-server:8000/tts/generate',
+        }),
+      );
+      
+      if (response.statusCode == 200) {
+        final result = jsonDecode(response.body);
+        print('✅ 백그라운드 작업 시작됨: ${result['job_id']}');
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('스토리 생성이 백그라운드에서 시작되었습니다. 작업 ID: ${result['job_id']}'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        print('❌ 백그라운드 작업 시작 실패: ${response.statusCode}');
+        print('응답: ${response.body}');
+      }
+    } catch (e) {
+      print('❌ 뒤로가기 처리 실패: $e');
+    }
+    
+    // WebSocket 연결 종료
+    _webSocketService.disconnect();
+    
+    // 화면 종료
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -240,9 +328,14 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
       );
     }
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7F7F7),
-      appBar: AppBar(
+    return WillPopScope(
+      onWillPop: () async {
+        await _handleBackPressed();
+        return false; // Navigator.pop()을 _handleBackPressed에서 처리
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF7F7F7),
+        appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -265,6 +358,10 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
           IconButton(
             icon: Icon(_isProcessing ? Icons.hourglass_empty : Icons.chat),
             onPressed: null,
+          ),
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: _handleBackPressed,
           ),
         ],
       ),
@@ -350,6 +447,7 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
           ),
         ],
       ),
+    ),
     );
   }
 }
