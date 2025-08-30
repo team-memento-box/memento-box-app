@@ -354,7 +354,3 @@ uploads/
 
 audio_files/
 temp_images/
-
-# 개인 개발 스크립트
-start_server.bat
-start_server.sh
