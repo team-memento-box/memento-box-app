@@ -244,9 +244,34 @@ class _GalleryScreenState extends State<GalleryScreen> {
             final key = '${pwc.year}년 ${_seasonKor(pwc.season)}';
             grouped.putIfAbsent(key, () => []).add(pwc);
           }
+          
+          // 그룹 키를 년도와 계절 우선순위로 정렬
+          final sortedGroupEntries = grouped.entries.toList();
+          sortedGroupEntries.sort((a, b) {
+            // 년도와 계절 정보 추출
+            final aYear = int.parse(a.key.split('년')[0]);
+            final aSeason = a.key.split('년 ')[1];
+            final bYear = int.parse(b.key.split('년')[0]);
+            final bSeason = b.key.split('년 ')[1];
+            
+            // 먼저 년도로 정렬 (최신년도 우선)
+            if (aYear != bYear) {
+              return bYear.compareTo(aYear);
+            }
+            
+            // 같은 년도면 계절로 정렬 (겨울->가을->여름->봄)
+            final seasonOrder = {'겨울': 0, '가을': 1, '여름': 2, '봄': 3};
+            return (seasonOrder[aSeason] ?? 4).compareTo(seasonOrder[bSeason] ?? 4);
+          });
+          
+          // 각 그룹 내에서 사진들을 업로드 날짜순으로 정렬
+          for (var entry in sortedGroupEntries) {
+            entry.value.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          }
+          
           return ListView(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            children: grouped.entries.map((entry) {
+            children: sortedGroupEntries.map((entry) {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
