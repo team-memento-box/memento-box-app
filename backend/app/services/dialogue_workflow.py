@@ -162,7 +162,7 @@ class DialogueWorkflow:
             if photo_context.get("photo_id"):
                 try:
                     photo_response = client.table("photos").select(
-                        "id, filename, file_path, description, tags, location_name"
+                        "id, filename, file_path, description, tags, location_name, photo_analyze_result"
                     ).eq("id", photo_context["photo_id"]).single().execute()
                     
                     if photo_response.data:
@@ -270,7 +270,30 @@ class DialogueWorkflow:
         # 사진 정보 포함한 컨텍스트 구성
         photo_description = ""
         if photo_info:
-            photo_description = f"사진 정보: {photo_info.get('description', '')}, 위치: {photo_info.get('location_name', '')}, 태그: {', '.join(photo_info.get('tags', []))}"
+            # 기본 사진 정보
+            basic_info = f"사진 정보: {photo_info.get('description', '')}, 위치: {photo_info.get('location_name', '')}, 태그: {', '.join(photo_info.get('tags', []))}"
+            
+            # 분석 결과 추가
+            analyze_result = photo_info.get('photo_analyze_result')
+            if analyze_result:
+                analysis_info = []
+                if analyze_result.get('caption'):
+                    analysis_info.append(f"분석 설명: {analyze_result['caption']}")
+                if analyze_result.get('mood'):
+                    analysis_info.append(f"분위기: {analyze_result['mood']}")
+                if analyze_result.get('key_objects'):
+                    analysis_info.append(f"주요 객체: {', '.join(analyze_result['key_objects'])}")
+                if analyze_result.get('people_description'):
+                    analysis_info.append(f"인물: {analyze_result['people_description']}")
+                if analyze_result.get('time_of_day'):
+                    analysis_info.append(f"시간대: {analyze_result['time_of_day']}")
+                
+                if analysis_info:
+                    photo_description = f"{basic_info}\n분석 결과: {', '.join(analysis_info)}"
+                else:
+                    photo_description = basic_info
+            else:
+                photo_description = basic_info
         
         conversation_prompt = f"""
         사용자와 자연스럽고 따뜻한 대화를 나누세요.
@@ -332,11 +355,26 @@ class DialogueWorkflow:
         user_message = state["input_data"]["user_message"]
         conversation_id = state["input_data"]["conversation_id"]
         photo_context = state["input_data"]["photo_context"]
+        photo_info = state.get("photo_info", {})
+        
+        # 사진 분석 결과 요약 (fallback용 간단 버전)
+        photo_context_text = ""
+        if photo_info:
+            analyze_result = photo_info.get('photo_analyze_result')
+            if analyze_result:
+                context_parts = []
+                if analyze_result.get('caption'):
+                    context_parts.append(f"사진: {analyze_result['caption'][:50]}...")
+                if analyze_result.get('mood'):
+                    context_parts.append(f"분위기: {analyze_result['mood']}")
+                
+                if context_parts:
+                    photo_context_text = f"\n참고: {', '.join(context_parts)}"
         
         fallback_prompt = f"""
         간단하고 따뜻한 응답을 생성하세요.
         
-        사용자 메시지: {user_message}
+        사용자 메시지: {user_message}{photo_context_text}
         
         30자 이내로 공감하며 답변해주세요.
         """
