@@ -6,6 +6,7 @@ import '../data/report_api.dart';
 import '../widgets/tap_widget.dart';
 import '../widgets/group_bar_widget.dart';
 import '../widgets/info_dialog.dart';
+import 'report_detail_cist_screen.dart';
 
 class ReportMainScreen extends StatefulWidget {
   final Report? report;
@@ -270,16 +271,39 @@ class _ReportMainScreenState extends State<ReportMainScreen>
               fontFamily: 'Pretendard',
             ),
             trailing: [
-              const Icon(
-                Icons.arrow_forward_ios,
-                color: Colors.white,
-                size: 16,
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ReportDetailCistScreen(report: widget.report),
+                    ),
+                  );
+                },
+                behavior: HitTestBehavior.translucent,
+                child: Container(
+                  width: 32,   // 원 크기 고정
+                  height: 32,  // 원 크기 고정
+                  alignment: Alignment.center, // 아이콘을 중앙에 정렬
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Color(0xFFB8EDCF), // 회색 배경
+                  ),
+                  child: Image.asset(
+                    'assets/images/right2.png',
+                    width: 16,   // 아이콘 크기 맞게 조정
+                    height: 16,
+                    fit: BoxFit.contain,
+                  ),
+                ),
               ),
             ],
             showInfoIcon: true,
             infoIconColor: Colors.white,
             onInfoTap: () => InfoDialog.showCognitiveInfo(context),
           ),
+
+
 
           const SizedBox(height: 20),
 
@@ -398,10 +422,31 @@ class _ReportMainScreenState extends State<ReportMainScreen>
               fontFamily: 'Pretendard',
             ),
             trailing: [
-              const Icon(
-                Icons.arrow_forward_ios,
-                color: Color(0xFF7CD0A0),
-                size: 16,
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ReportDetailCistScreen(report: widget.report),
+                    ),
+                  );
+                },
+                behavior: HitTestBehavior.translucent,
+                child: Container(
+                  width: 32,   // 원 크기 고정
+                  height: 32,  // 원 크기 고정
+                  alignment: Alignment.center, // 아이콘을 중앙에 정렬
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Color(0xFF7CD0A1), // 회색 배경
+                  ),
+                  child: Image.asset(
+                    'assets/images/right1.png',
+                    width: 16,  // 아이콘 크기 맞게 조정
+                    height: 16,
+                    fit: BoxFit.contain,
+                  ),
+                ),
               ),
             ],
             showInfoIcon: true,
