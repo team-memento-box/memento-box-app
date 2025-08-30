@@ -19,7 +19,7 @@ build/
 doc/api/
 
 # dotenv environment variables file
-.env*
+frontend/assets/.env
 
 # Avoid committing generated Javascript files:
 *.dart.js
@@ -35,7 +35,7 @@ doc/api/
 
 ### Dart Patch ###
 # dotenv environment variables file
-.env
+frontend/assets/.env
 
 ### Flutter ###
 # Flutter/Dart/Pub related
