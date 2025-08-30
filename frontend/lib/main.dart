@@ -17,6 +17,7 @@ import 'screens/0-3-1-1.dart'; // Guardian 그룹 생성 화면
 import 'screens/0-3-2.dart'; // Dependent 코드 입력 화면
 import 'screens/Photo_detail_screen.dart'; // Photo detail 화면 추가
 import 'screens/report_list_screen.dart'; // Report list 화면 추가
+import 'screens/report_detail_speech.dart'; // 대화 분석 결과 화면 추가
 import 'package:flutter_dotenv/flutter_dotenv.dart'; // --홍원 추가--
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart'; // 카카오 SDK 추가
 import 'core/supabase_service.dart'; // Supabase 서비스
@@ -136,6 +137,10 @@ class MyCustomApp extends StatelessWidget {
               builder: (context) => PhotoDetailScreen(photoData: photoData),
             );
           }
+        }
+        // 대화 분석 결과 화면 (테스트용)
+        if (settings.name == '/speechAnalysis') {
+          return MaterialPageRoute(builder: (context) => const ConversationHealthAnalysisScreen());
         }
         // 카카오 OAuth 콜백 처리 - code 파라미터 감지
         if (settings.name?.contains('code=') == true ||
