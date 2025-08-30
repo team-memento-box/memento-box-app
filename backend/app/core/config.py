@@ -28,9 +28,10 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str
     
     # Fish Speech TTS 설정
-    FISH_SPEECH_ENDPOINT: str = "http://localhost:5000"  # 기본값, GPU 서버 IP로 덮어쓸 수 있음
+    FISH_SPEECH_ENDPOINT: str = "http://localhost:5000"
     
-    # LangSmith 설정
+    # LangSmith 설정 (LangChain 모니터링)
+>>>>>>> develop
     LANGSMITH_TRACING: Optional[str] = None
     LANGSMITH_ENDPOINT: Optional[str] = None
     LANGSMITH_API_KEY: Optional[str] = None

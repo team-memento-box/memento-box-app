@@ -55,6 +55,7 @@ services:
 
     celery:
         build: ./app
+        platform: linux/amd64
         container_name: celery_worker
         restart: always
         env_file:
