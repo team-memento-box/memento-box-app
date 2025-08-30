@@ -250,7 +250,8 @@ async def generate_tts_async(story_id: str, fish_speech_endpoint: str):
     
     # Fish Speech API 호출 - 환경변수 강제 사용
     import os
-    fish_speech_endpoint = os.getenv("FISH_SPEECH_ENDPOINT", "http://43.203.219.234:8000/tts")
+    fish_speech_endpoint = os.getenv("FISH_SPEECH_ENDPOINT")
+    #fish_speech_endpoint = os.getenv("FISH_SPEECH_ENDPOINT", "http://43.203.219.234:8000/tts")
     print(f"🔧 강제 사용 엔드포인트: {fish_speech_endpoint}")
     
     fish_speech_payload = {
@@ -282,27 +283,59 @@ async def generate_tts_async(story_id: str, fish_speech_endpoint: str):
     audio_path = f"{family_id}/{user_id}/{audio_filename}"
     
     # Supabase Storage에 업로드
+    print(f"🔍 Storage 업로드 시작: {audio_path}")
     storage_response = supabase_admin.storage.from_("fishspeech").upload(
         audio_path, 
         audio_data,
         file_options={"content-type": "audio/wav"}
     )
     
+    print(f"🔍 Storage 업로드 결과: {storage_response}")
+    print(f"🔍 Storage 응답 타입: {type(storage_response)}")
+    if hasattr(storage_response, 'data'):
+        print(f"🔍 Storage data: {storage_response.data}")
+    if hasattr(storage_response, 'error'):
+        print(f"🔍 Storage error: {storage_response.error}")
+    
     if hasattr(storage_response, 'error') and storage_response.error:
-        raise Exception("오디오 파일 저장에 실패했습니다.")
+        raise Exception(f"오디오 파일 저장에 실패했습니다: {storage_response.error}")
     
     # DB 업데이트
+    print(f"🔍 DB 업데이트 시작")
+    print(f"🔍 story_id: {story_id}")
+    print(f"🔍 audio_path: {audio_path}")
+    
     tts_params = {
         "fish_speech_endpoint": fish_speech_endpoint,
         "reference_audio_url": reference_audio_url,
         "generated_at": datetime.now().isoformat()
     }
+    print(f"🔍 tts_params: {tts_params}")
     
-    supabase_admin.table("photo_stories").update({
-        "tts_audio_path": audio_path,
-        "tts_status": "succeeded",
-        "tts_params": tts_params,
-        "updated_at": datetime.now().isoformat()
-    }).eq("id", story_id).execute()
+    try:
+        update_response = supabase_admin.table("photo_stories").update({
+            "tts_audio_path": audio_path,
+            "tts_status": "succeeded",
+            "tts_params": tts_params,
+            "updated_at": datetime.now().isoformat()
+        }).eq("id", story_id).execute()
+        
+        print(f"🔍 DB 업데이트 성공: {update_response}")
+        print(f"🔍 업데이트된 행 수: {len(update_response.data) if update_response.data else 0}")
+        
+    except Exception as db_error:
+        print(f"❌ DB 업데이트 실패: {str(db_error)}")
+        raise Exception(f"DB 업데이트 실패: {str(db_error)}")
+    
+    # 업데이트 결과 확인
+    print(f"🔍 업데이트 결과 확인 중...")
+    try:
+        verify_response = supabase_admin.table("photo_stories").select(
+            "tts_audio_path, tts_status, tts_params, updated_at"
+        ).eq("id", story_id).execute()
+        
+        print(f"🔍 업데이트 후 DB 상태: {verify_response.data}")
+    except Exception as verify_error:
+        print(f"⚠️ DB 상태 확인 실패: {str(verify_error)}")
     
     return {'tts_audio_path': audio_path}
