@@ -10,7 +10,7 @@ from datetime import datetime
 from services.dialogue_workflow import DialogueWorkflow, WorkflowInput
 from core.auth import get_supabase_user
 from core.config import supabase_admin
-from routers import chat, conversation, openai, audio_analysis,photos  # AI 전용 라우터들
+from routers import chat, conversation, openai, audio_analysis, photos  # AI 전용 라우터들
 app = FastAPI(title="Memento Box AI API", description="AI 전용 API - 채팅, 이미지 분석, 음성 합성")
 
 # CORS 설정
