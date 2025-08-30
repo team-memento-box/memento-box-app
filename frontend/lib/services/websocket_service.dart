@@ -19,9 +19,9 @@ class WebSocketService {
       _conversationId = conversationId;
       
       // 여러 환경 변수를 확인하여 URL 결정
-      String? baseUrl = dotenv.env['FASTAPI_URL'] ?? 
-                       dotenv.env['BASE_URL'] ?? 
-                       dotenv.env['AI_API_BASE_URL'];
+      String? baseUrl = dotenv.env['BASE_URL'];
+
+
       
       print('🔍 Environment variables check:');
       print('  FASTAPI_URL: ${dotenv.env['FASTAPI_URL']}');
