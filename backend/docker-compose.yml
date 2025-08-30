@@ -63,7 +63,7 @@ services:
         volumes:
             - ./app:/app
             - ./.env:/app/.env
-        command: celery -A tasks worker --loglevel=info --uid=nobody --gid=nogroup
+        command: celery -A tasks.story_tasks worker --loglevel=info --uid=nobody --gid=nogroup
         depends_on:
             redis:
                 condition: service_started
@@ -73,6 +73,7 @@ services:
             - memento_net
         environment:
             - C_FORCE_ROOT=1
+            
 
     nginx:
         image: nginx:latest

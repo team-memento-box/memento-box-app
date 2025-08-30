@@ -8,23 +8,11 @@ from supabase import create_client
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
-# Celery 앱 초기화
-rabbitmq_user = os.getenv('RABBITMQ_USER', 'admin')
-rabbitmq_pass = os.getenv('RABBITMQ_PASS', 'password')
-rabbitmq_host = os.getenv('RABBITMQ_HOST', 'localhost')
-redis_host = os.getenv('REDIS_HOST', 'localhost')
+# Celery 앱 초기화 - story_tasks와 통합된 설정 사용
+from .story_tasks import celery_app
 
-celery_app = Celery(
-    'dialogue_tasks',
-    broker=f"pyamqp://{rabbitmq_user}:{rabbitmq_pass}@{rabbitmq_host}:5672//",
-    backend=f"redis://{redis_host}:6379/0"
-)
-
-# Supabase 클라이언트 초기화
-supabase = create_client(
-    os.getenv("SUPABASE_URL"),
-    os.getenv("SUPABASE_ANON_KEY")
-)
+# Supabase 클라이언트 초기화 - celery_config와 통합
+from .celery_config import supabase_admin as supabase
 
 # LLM 초기화 (고품질 모델) with LangSmith 지원
 langsmith_tracing = os.getenv("LANGSMITH_TRACING", "true").lower() == "true"
