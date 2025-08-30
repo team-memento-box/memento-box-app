@@ -334,7 +334,7 @@ class DialogueWorkflow:
             print(f"Cache retrieval failed: {e}")
             state["intermediate"]["cache_score"] = 0.3
         
-        return state
+        return state    
     
     def bridge_generation_node(self, state: GraphState) -> GraphState:
         pass
@@ -487,3 +487,4 @@ class DialogueWorkflow:
                 "response_text": "죄송합니다. 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
                 "response_audio_url": None
             }
+        
