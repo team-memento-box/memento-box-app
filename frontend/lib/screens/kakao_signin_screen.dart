@@ -253,6 +253,7 @@ class _KakaoSigninScreenState extends State<KakaoSigninScreen> with WidgetsBindi
       await SupabaseService.client.auth.signInWithOAuth(
         OAuthProvider.kakao,
         redirectTo: 'memento://callback',
+        
         queryParams: {
           'prompt': 'login', // 👈 기존 세션 무시, 항상 로그인 강제
         },
