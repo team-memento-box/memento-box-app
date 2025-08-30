@@ -10,7 +10,7 @@ from datetime import datetime
 from services.dialogue_workflow import DialogueWorkflow, WorkflowInput
 from core.auth import get_supabase_user
 from core.config import supabase_admin
-from routers import chat, conversation  # AI 전용 라우터들
+from routers import chat, conversation, txt_analysis  # AI 전용 라우터들
 
 load_dotenv()
 app = FastAPI(title="Memento Box AI API", description="AI 전용 API - 채팅, 이미지 분석, 음성 합성, 치매 감지")
@@ -30,6 +30,7 @@ from services.audio_dementia_detector import get_dementia_detector_service
 # AI 전용 라우터 등록
 app.include_router(chat.router, prefix="/api", tags=["chat-legacy"])
 app.include_router(conversation.router, prefix="/api", tags=["conversation"])
+app.include_router(txt_analysis.router, prefix="/api", tags=["text-analysis"])
 
 # LangGraph 대화 워크플로우 초기화
 workflow = DialogueWorkflow()

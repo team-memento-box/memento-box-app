@@ -31,24 +31,25 @@ dependencies:
   flutter:
     sdk: flutter
   app_links: ^6.0.0
-  supabase_flutter: ^2.3.4       # ✅ Supabase 클라이언트 (DB, Auth, Storage)
+  supabase_flutter: ^2.3.4 # ✅ Supabase 클라이언트 (DB, Auth, Storage)
   kakao_flutter_sdk_user: ^1.4.2 # ✅ (선택) 카카오 API 직접 호출할 때만 필요 (예: 프로필)
-  url_launcher: ^6.3.1           # ✅ (선택) 외부 URL 띄울 때
-  flutter_dotenv: ^5.2.1         # ✅ 환경 변수 관리
-  http: ^0.13.6                  # ✅ API 호출
-  provider: ^6.1.1               # ✅ 상태 관리
-  uuid: ^4.5.1                   # ✅ UUID 생성
-  web_socket_channel: ^3.0.1     # ✅ WebSocket 클라이언트
-            # 🏷️ 상태 관리 패턴을 위한 Provider 패키지
+  url_launcher: ^6.3.1 # ✅ (선택) 외부 URL 띄울 때
+  flutter_dotenv: ^5.2.1 # ✅ 환경 변수 관리
+  http: ^0.13.6 # ✅ API 호출
+  provider: ^6.1.1 # ✅ 상태 관리
+  uuid: ^4.5.1 # ✅ UUID 생성
+  web_socket_channel: ^3.0.1 # ✅ WebSocket 클라이언트
+  flutter_localizations: # ✅ 지역화 지원
+    sdk: flutter
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
-  image_picker: ^0.8.9              # 이미지 선택
+  image_picker: ^0.8.9 # 이미지 선택
   # record: ^4.4.4                    # 오디오 녹음 - 임시 비활성화
-  permission_handler: ^12.0.1       # 권한 관리 - 최신 버전으로 업데이트
-  just_audio: ^0.9.46  # 기존: ^0.10.4에서 변경            # 오디오 재생 - 최신 버전으로 업데이트
-  shared_preferences: ^2.2.2        # 로컬 저장소
+  permission_handler: ^12.0.1 # 권한 관리 - 최신 버전으로 업데이트
+  just_audio: ^0.9.46 # 오디오 재생 - 기존 버전 유지
+  shared_preferences: ^2.2.2 # 로컬 저장소
 
 dev_dependencies:
   flutter_test:
@@ -105,3 +106,16 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+  fonts:
+    - family: Pretendard
+      fonts:
+        - asset: assets/fonts/Pretendard-Regular.otf
+          weight: 400
+        - asset: assets/fonts/Pretendard-Medium.otf
+          weight: 500
+        - asset: assets/fonts/Pretendard-SemiBold.otf
+          weight: 600
+        - asset: assets/fonts/Pretendard-Bold.otf
+          weight: 700
+        - asset: assets/fonts/Pretendard-ExtraBold.otf
+          weight: 800
