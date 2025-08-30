@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     FISH_SPEECH_ENDPOINT: str = "http://localhost:5000"
     
     # LangSmith 설정 (LangChain 모니터링)
->>>>>>> develop
+
     LANGSMITH_TRACING: Optional[str] = None
     LANGSMITH_ENDPOINT: Optional[str] = None
     LANGSMITH_API_KEY: Optional[str] = None
