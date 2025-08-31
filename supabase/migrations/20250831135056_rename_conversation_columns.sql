@@ -1,10 +1,10 @@
 -- Rename and reorder conversation table columns
--- question_text -> ai_output
--- user_response_text -> user_input
+-- ai_output -> ai_output
+-- user_input -> user_input
 -- Reorder columns: conversation_order, user_input, ai_output
 
-alter table "public"."conversations" rename column "question_text" to "ai_output";
-alter table "public"."conversations" rename column "user_response_text" to "user_input";
+alter table "public"."conversations" rename column "ai_output" to "ai_output";
+alter table "public"."conversations" rename column "user_input" to "user_input";
 
 -- Reorder columns by creating new columns in desired order and copying data
 alter table "public"."conversations" add column "user_input_new" text;
