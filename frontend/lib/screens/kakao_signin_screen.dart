@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart' as kakao;
 import '../core/supabase_service.dart';
 import '../services/user_service.dart';
-import '../user_provider.dart';
+import '../providers/user_provider.dart';
 import 'dart:async';
 
 class KakaoSigninScreen extends StatefulWidget {
@@ -253,7 +253,6 @@ class _KakaoSigninScreenState extends State<KakaoSigninScreen> with WidgetsBindi
       await SupabaseService.client.auth.signInWithOAuth(
         OAuthProvider.kakao,
         redirectTo: 'memento://callback',
-        
         queryParams: {
           'prompt': 'login', // 👈 기존 세션 무시, 항상 로그인 강제
         },

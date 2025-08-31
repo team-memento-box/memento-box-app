@@ -153,7 +153,7 @@ class UserResponse {
     return UserResponse(
       id: json['id'],
       conversationId: json['conversation_id'],
-      textResponse: json['user_response_text'],
+      textResponse: json['user_input'],
       audioUrl: json['user_response_audio_url'],
       durationSeconds: json['response_duration_seconds'],
       createdAt: DateTime.parse(json['created_at']),

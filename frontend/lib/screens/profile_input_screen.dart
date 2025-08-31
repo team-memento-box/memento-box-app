@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import '../user_provider.dart';
+import '../providers/user_provider.dart';
 import '../core/supabase_service.dart';
 
 class ProfileInputScreen extends StatefulWidget {

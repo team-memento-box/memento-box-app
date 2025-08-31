@@ -201,4 +201,87 @@ class UserService {
       return false;
     }
   }
+
+  /// 특정 세션의 CIST 데이터 조회 (리포트용)
+  static Future<List<Map<String, dynamic>>> getCistDataBySession(String sessionId) async {
+    try {
+      print('🔍 CIST 데이터 조회 시작 - sessionId: $sessionId');
+      
+      // 해당 세션의 CIST 대화 조회
+      final conversations = await SupabaseService.client
+          .from('conversations')
+          .select('id, session_id, cist_category, cist_score, is_cist_item, ai_output, user_input')
+          .eq('session_id', sessionId)
+          .eq('is_cist_item', true)
+          .filter('cist_category', 'in', '(registration,recall,naming,time_orientation)')
+          .order('conversation_order', ascending: true);
+      
+      print('📊 해당 세션의 CIST 데이터: ${conversations.length}개');
+      
+      // 카테고리별로 그룹화하고 최신 데이터만 사용
+      final Map<String, Map<String, dynamic>> categoryData = {};
+      
+      for (final conversation in conversations) {
+        final category = conversation['cist_category'] as String;
+        if (!categoryData.containsKey(category)) {
+          categoryData[category] = {
+            'category': _getCategoryDisplayName(category),
+            'description': _getCategoryDescription(category),
+            'question': conversation['ai_output'] ?? '',
+            'answer': conversation['user_input'] ?? '',
+            'score': conversation['cist_score'] ?? 0,
+            'isCorrect': (conversation['cist_score'] ?? 0) == 1,
+          };
+        }
+      }
+      
+      // 순서를 맞춰서 반환
+      final orderedCategories = ['time_orientation', 'registration', 'recall', 'naming'];
+      final result = <Map<String, dynamic>>[];
+      
+      for (final category in orderedCategories) {
+        if (categoryData.containsKey(category)) {
+          result.add(categoryData[category]!);
+        }
+      }
+      
+      print('✅ CIST 데이터 처리 완료: ${result.length}개 카테고리');
+      return result;
+    } catch (e) {
+      print('❌ CIST 데이터 조회 오류: $e');
+      return [];
+    }
+  }
+  
+  /// CIST 카테고리의 표시용 이름 반환
+  static String _getCategoryDisplayName(String category) {
+    switch (category) {
+      case 'time_orientation':
+        return '시간지남력';
+      case 'registration':
+        return '기억력 등록';
+      case 'recall':
+        return '회상';
+      case 'naming':
+        return '명명';
+      default:
+        return category;
+    }
+  }
+  
+  /// CIST 카테고리의 설명 반환
+  static String _getCategoryDescription(String category) {
+    switch (category) {
+      case 'time_orientation':
+        return '현재 자신이 놓인 시간, 날짜, 계절 등의 상황을 올바르게 인식하는 능력';
+      case 'registration':
+        return '새로운 정보를 기억하고 저장하는 능력';
+      case 'recall':
+        return '이전에 학습한 정보를 기억해내는 능력';
+      case 'naming':
+        return '사물의 이름을 정확히 기억하고 표현하는 능력';
+      default:
+        return '인지 능력 평가 항목';
+    }
+  }
 }

@@ -125,9 +125,9 @@ class ReportApi {
               conversations(
                 id,
                 conversation_order,
-                question_text,
+                ai_output,
                 question_type,
-                user_response_text,
+                user_input,
                 user_response_audio_url,
                 response_duration_seconds,
                 ai_analysis,

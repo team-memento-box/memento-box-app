@@ -172,7 +172,7 @@ class EnhancedDialogueWorkflow:
                     if conversation.get("ai_analysis"):
                         message_history.append({
                             "role": "assistant", 
-                            "content": conversation.get("question_text", "")
+                            "content": conversation.get("ai_output", "")
                         })
                 else:
                     message_history = [

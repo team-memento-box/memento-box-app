@@ -14,7 +14,7 @@ import '../utils/styles.dart';
 import '../widgets/audio_player_widget.dart';
 import '../models/photo.dart'; // ← Photo 모델 import 추가
 import 'package:provider/provider.dart'; // ✅ Provider import
-import '../user_provider.dart'; // ✅ 사용자 Provider import
+import '../providers/user_provider.dart'; // ✅ 사용자 Provider import
 import '../core/supabase_service.dart'; // ✅ Supabase 서비스 import
 import 'dart:convert';
 import 'package:http/http.dart' as http;

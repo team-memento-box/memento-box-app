@@ -66,10 +66,10 @@ class SessionApi {
         'user_id': userId,
         'photo_id': photoId,
         'conversation_order': existingCount,
-        'question_text': questionText,
+        'ai_output': questionText,
         'question_type': questionType,
         'cist_category': cistCategory,
-        'user_response_text': null,
+        'user_input': null,
         'user_response_audio_url': null,
         'response_duration_seconds': null,
         'ai_analysis': null,
@@ -112,7 +112,7 @@ class SessionApi {
         'updated_at': DateTime.now().toIso8601String(),
       };
 
-      if (responseText != null) updateData['user_response_text'] = responseText;
+      if (responseText != null) updateData['user_input'] = responseText;
       if (audioUrl != null) updateData['user_response_audio_url'] = audioUrl;
       if (durationSeconds != null) updateData['response_duration_seconds'] = durationSeconds;
       if (aiAnalysis != null) updateData['ai_analysis'] = aiAnalysis;
@@ -285,7 +285,7 @@ class SessionApi {
         'user_id': userId,
         'conversation_id': conversationId,
         'cist_category': cistCategory,
-        'question_text': questionText,
+        'ai_output': questionText,
         'expected_response': expectedResponse,
         'user_response': userResponse,
         'is_correct': isCorrect,

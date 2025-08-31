@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'core/supabase_service.dart';
+import '../core/supabase_service.dart';
 
 class UserProvider with ChangeNotifier {
   // Supabase Auth 관련
