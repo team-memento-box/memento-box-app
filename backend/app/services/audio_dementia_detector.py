@@ -45,8 +45,16 @@ class DementiaDetector:
         self._load_model()
         
         # 특징 추출기 초기화
-        from audio_feature_extractor import AudioFeatureExtractor
-        self.feature_extractor = AudioFeatureExtractor()
+        try:
+            from .audio_feature_extractor import AudioFeatureExtractor
+            self.feature_extractor = AudioFeatureExtractor()
+        except ImportError:
+            # 상대 import 실패시 절대 import 시도
+            import sys
+            import os
+            sys.path.append(os.path.dirname(__file__))
+            from audio_feature_extractor import AudioFeatureExtractor
+            self.feature_extractor = AudioFeatureExtractor()
     
     def _load_model(self):
         """학습된 모델과 스케일러를 로드합니다."""

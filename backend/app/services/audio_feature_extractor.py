@@ -374,7 +374,7 @@ class AudioFeatureExtractor:
         return features
     
     def extract_features(self, audio_path):
-        """주요 특징 추출 - 20초 단위로 슬라이싱하여 여러 세그먼트 생성"""
+        """주요 특징 추출 - 20초 단위로 슬라이싱하여 여러 세그먼트 생성 (데이터 증강 포함)"""
         print("특징 추출 시작...")
         
         # 오디오 로드
@@ -382,27 +382,48 @@ class AudioFeatureExtractor:
         if audio is None:
             return None
         
-        # 가드 샘플 제거 (20초 세그먼트 3개를 위해 조정)
-        # 67.7초에서 20초 세그먼트 3개 = 60초 필요, 따라서 7.7초만 제거
-        total_guard = len(audio) - (20 * 3 * self.sample_rate)  # 20초 * 3개 세그먼트
-        if total_guard > 0:
-            guard_samples = int(total_guard / 2)  # 시작과 끝에 균등 분배
+        # 원본 오디오 길이 확인
+        original_duration = len(audio) / self.sample_rate
+        print(f"원본 오디오 길이: {original_duration:.1f}초")
+        
+        # 최소 1분(60초) 제한 조건 확인
+        min_required_duration = 60.0  # 1분
+        if original_duration < min_required_duration:
+            print(f"❌ 오디오가 너무 짧습니다: {original_duration:.1f}초 < {min_required_duration}초")
+            print("   치매 진단을 위해 최소 1분 이상의 오디오가 필요합니다.")
+            return None
+        
+        # 가드 샘플 제거 (전체 오디오 길이에 맞게 조정)
+        # 긴 오디오는 앞뒤 5초씩만 제거 (신호 품질이 좋지 않을 수 있음)
+        guard_duration = min(5.0, (original_duration - 60.0) / 2)  # 최대 5초씩, 최소 60초는 보장
+        
+        if guard_duration > 0:
+            guard_samples = int(guard_duration * self.sample_rate)
             audio = audio[guard_samples:-guard_samples]
-            print(f"가드 샘플 제거 완료: {guard_samples/self.sample_rate:.1f}초 (총 {total_guard/self.sample_rate:.1f}초)")
+            print(f"가드 샘플 제거 완료: {guard_duration:.1f}초씩 (앞뒤)")
+            print(f"처리 대상 오디오 길이: {len(audio)/self.sample_rate:.1f}초")
         else:
-            print("가드 샘플 제거 불필요: 오디오가 너무 짧음")
+            print("가드 샘플 제거 불필요: 오디오 길이 적절")
         
         # 파일명에서 ID 추출 (확장자 제거)
         base_name = os.path.splitext(os.path.basename(audio_path))[0]
         
-        # 20초 세그먼트 3개 생성 (1초 오버랩)
+        # 동적 세그먼트 생성 (20초 단위, 1초 오버랩)
         segment_duration = 20  # 20초
+        overlap_duration = 1   # 1초 오버랩
+        step_duration = segment_duration - overlap_duration  # 19초 스텝
+        
+        audio_duration = len(audio) / self.sample_rate
         samples_per_segment = int(segment_duration * self.sample_rate)
+        
+        # 가능한 세그먼트 수 계산
+        max_segments = int((audio_duration - segment_duration) / step_duration) + 1
         
         all_features = []
         
-        print(f"20초 세그먼트 3개 생성 (1초 오버랩)...")
-        print(f"오디오 길이: {len(audio)/self.sample_rate:.1f}초")
+        print(f"20초 세그먼트 생성 (1초 오버랩)...")
+        print(f"처리 오디오 길이: {audio_duration:.1f}초")
+        print(f"예상 세그먼트 수: {max_segments}개")
         
         # 원본과 동일한 노이즈 샘플 추출 (침묵 구간)
         print("노이즈 샘플 추출 중...")
@@ -427,12 +448,18 @@ class AudioFeatureExtractor:
         
         print(f"노이즈 샘플 길이: {len(noisy_part)/self.sample_rate:.2f}초")
         
-        # 20초 세그먼트 3개 생성 (1초 오버랩)
-        # 가드 샘플 제거 후 60초에서 20초 세그먼트 3개: 0-20, 19-39, 38-58
-        segment_starts = [0, 19, 38]  # 초 단위
-        segment_ends = [20, 39, 58]   # 초 단위
-        
-        for i, (start_sec, end_sec) in enumerate(zip(segment_starts, segment_ends)):
+        # 동적 세그먼트 생성 (1초 오버랩)
+        for i in range(max_segments):
+            start_sec = i * step_duration
+            end_sec = start_sec + segment_duration
+            
+            # 마지막 세그먼트가 오디오 길이를 초과하는 경우 조정
+            if end_sec > audio_duration:
+                end_sec = audio_duration
+                start_sec = max(0, end_sec - segment_duration)
+            
+            if end_sec - start_sec < segment_duration * 0.5:  # 너무 짧은 세그먼트 제외
+                break
             start_sample = int(start_sec * self.sample_rate)
             end_sample = int(end_sec * self.sample_rate)
             
@@ -442,7 +469,7 @@ class AudioFeatureExtractor:
                 continue
                 
             segment = audio[start_sample:end_sample]
-            print(f"세그먼트 {i+1}: {start_sec}s ~ {end_sec}s (길이: {len(segment)/self.sample_rate:.1f}s)")
+            print(f"세그먼트 {i+1}: {start_sec:.1f}s ~ {end_sec:.1f}s (길이: {len(segment)/self.sample_rate:.1f}s)")
             
             # 세그먼트가 비어있지 않은지 확인
             if len(segment) == 0:
@@ -473,52 +500,100 @@ class AudioFeatureExtractor:
             
             all_features.append(features)
         
-        # 속도 변형 (0.8x, 1.2x) 추가
-        print("속도 변형 세그먼트 생성 중...")
+        # 속도 변형 데이터 증강 (0.8x, 1.2x)
+        print("속도 변형 데이터 증강 시작...")
         
-        # 0.8x 속도 (느리게)
-        audio_slow = librosa.effects.time_stretch(audio, rate=0.8)
-        
-        for i, (start_sec, end_sec) in enumerate(zip(segment_starts, segment_ends)):
-            start_sample = int(start_sec * self.sample_rate)
-            end_sample = int(end_sec * self.sample_rate)
+        # 0.8x 속도 (느리게) - 데이터 증강
+        try:
+            print("  0.8x 속도 변형 중...")
+            audio_slow = librosa.effects.time_stretch(audio, rate=0.8)
+            slow_duration = len(audio_slow) / self.sample_rate
+            slow_max_segments = int((slow_duration - segment_duration) / step_duration) + 1
             
-            # 오디오 길이 확인
-            if end_sample > len(audio_slow):
-                print(f"경고: 느린 속도 세그먼트 {i+1}이 오디오 길이를 초과합니다. 건너뜁니다.")
-                continue
+            for i in range(min(slow_max_segments, max_segments)):  # 원본과 같은 개수만 생성
+                start_sec = i * step_duration
+                end_sec = start_sec + segment_duration
                 
-            segment = audio_slow[start_sample:end_sample]
-            
-            # 특징 추출
-            features = self.extract_features_from_segment(segment, self.sample_rate)
-            
-            # ID 추가 (속도 표시)
-            features['ID'] = f"{base_name}_slow_{i+1}"
-            
-            all_features.append(features)
-        
-        # 1.2x 속도 (빠르게)
-        audio_fast = librosa.effects.time_stretch(audio, rate=1.2)
-        
-        for i, (start_sec, end_sec) in enumerate(zip(segment_starts, segment_ends)):
-            start_sample = int(start_sec * self.sample_rate)
-            end_sample = int(end_sec * self.sample_rate)
-            
-            # 오디오 길이 확인
-            if end_sample > len(audio_fast):
-                print(f"경고: 빠른 속도 세그먼트 {i+1}이 오디오 길이를 초과합니다. 건너뜁니다.")
-                continue
+                if end_sec > slow_duration:
+                    end_sec = slow_duration
+                    start_sec = max(0, end_sec - segment_duration)
                 
-            segment = audio_fast[start_sample:end_sample]
+                if end_sec - start_sec < segment_duration * 0.5:
+                    break
+                    
+                start_sample = int(start_sec * self.sample_rate)
+                end_sample = int(end_sec * self.sample_rate)
+                
+                if end_sample > len(audio_slow):
+                    continue
+                    
+                segment = audio_slow[start_sample:end_sample]
+                if len(segment) == 0:
+                    continue
+                
+                # 노이즈 감소 (간단화)
+                try:
+                    import noisereduce as nr
+                    segment = nr.reduce_noise(y=segment, y_noise=noisy_part, sr=self.sample_rate)
+                except:
+                    pass  # 노이즈 감소 실패시 원본 사용
+                
+                # 특징 추출
+                features = self.extract_features_from_segment(segment, self.sample_rate)
+                features['ID'] = f"{base_name}_slow_{i+1}"
+                all_features.append(features)
             
-            # 특징 추출
-            features = self.extract_features_from_segment(segment, self.sample_rate)
+            print(f"  ✅ 0.8x 속도 변형 완료: {len([f for f in all_features if '_slow_' in f['ID']])}개 세그먼트")
             
-            # ID 추가 (속도 표시)
-            features['ID'] = f"{base_name}_fast_{i+1}"
+        except Exception as e:
+            print(f"  ⚠️ 0.8x 속도 변형 실패: {e}")
+        
+        # 1.2x 속도 (빠르게) - 데이터 증강
+        try:
+            print("  1.2x 속도 변형 중...")
+            audio_fast = librosa.effects.time_stretch(audio, rate=1.2)
+            fast_duration = len(audio_fast) / self.sample_rate
+            fast_max_segments = int((fast_duration - segment_duration) / step_duration) + 1
             
-            all_features.append(features)
+            for i in range(min(fast_max_segments, max_segments)):  # 원본과 같은 개수만 생성
+                start_sec = i * step_duration
+                end_sec = start_sec + segment_duration
+                
+                if end_sec > fast_duration:
+                    end_sec = fast_duration
+                    start_sec = max(0, end_sec - segment_duration)
+                
+                if end_sec - start_sec < segment_duration * 0.5:
+                    break
+                    
+                start_sample = int(start_sec * self.sample_rate)
+                end_sample = int(end_sec * self.sample_rate)
+                
+                if end_sample > len(audio_fast):
+                    continue
+                    
+                segment = audio_fast[start_sample:end_sample]
+                if len(segment) == 0:
+                    continue
+                
+                # 노이즈 감소 (간단화)
+                try:
+                    import noisereduce as nr
+                    segment = nr.reduce_noise(y=segment, y_noise=noisy_part, sr=self.sample_rate)
+                except:
+                    pass  # 노이즈 감소 실패시 원본 사용
+                
+                # 특징 추출
+                features = self.extract_features_from_segment(segment, self.sample_rate)
+                features['ID'] = f"{base_name}_fast_{i+1}"
+                all_features.append(features)
+            
+            print(f"  ✅ 1.2x 속도 변형 완료: {len([f for f in all_features if '_fast_' in f['ID']])}개 세그먼트")
+            
+        except Exception as e:
+            print(f"  ⚠️ 1.2x 속도 변형 실패: {e}")
+        
+        print(f"데이터 증강 완료!")
         
         print(f"총 {len(all_features)}개 세그먼트의 특징 추출 완료!")
         return all_features

@@ -582,36 +582,42 @@ async def detect_dementia_from_audio(
         # 4) 결과를 DB에 저장
         if result.get("success"):
             try:
-                # session_audio_analysis 테이블 업데이트
-                analysis_data = {
-                    "total_slices": result["total_segments"],
-                    "dementia_slices": result["dementia_segments_count"],
-                    "dementia_ratio": result["dementia_ratio"],
-                    "health_score": max(0, min(100, int((1 - result["dementia_ratio"]) * 100))),
-                    "risk_level": "risk" if result["dementia_ratio"] >= 0.6 else "suspect" if result["dementia_ratio"] >= 0.3 else "normal"
-                }
-                
-                # session_id로 기존 레코드 업데이트 또는 새로 생성
+                # session_id로 기존 레코드 확인
                 existing = supabase.table("session_audio_analysis").select("*").eq("session_id", session_id).execute()
                 
-                if existing.data:
-                    # 기존 레코드 업데이트
-                    supabase.table("session_audio_analysis").update(analysis_data).eq("session_id", session_id).execute()
-                else:
-                    # 새 레코드 생성 - user_id, family_id 필요
-                    user_id, family_id = await _get_session_user_family_info(session_id, supabase)
-                    analysis_data.update({
-                        "session_id": session_id,
-                        "user_id": user_id,
-                        "family_id": family_id,
-                        "merged_audio_path": merged_url
-                    })
-                    supabase.table("session_audio_analysis").insert(analysis_data).execute()
+                # user_id, family_id 가져오기
+                user_id, family_id = await _get_session_user_family_info(session_id, supabase)
                 
-                print(f"✅ DB 저장 완료: session_id={session_id}")
+                # 병합된 오디오 URL 가져오기
+                session_response = supabase.table("sessions").select("merged_audio_url").eq("id", session_id).execute()
+                merged_audio_path = session_response.data[0].get("merged_audio_url") if session_response.data else None
+                
+                # DB 저장 데이터 구성 (새로운 스키마에 맞춤)
+                analysis_data = {
+                    "session_id": session_id,
+                    "user_id": user_id,
+                    "family_id": family_id,
+                    "merged_audio_path": merged_audio_path,
+                    "total_slices": result["total_segments"],
+                    "dementia_slices": result["dementia_segments_count"],
+                    "risk_level": "risk" if result["dementia_ratio"] >= 0.6 else "suspect" if result["dementia_ratio"] >= 0.3 else "normal",
+                    "adjusted_mean": None  # API에서 제공하지 않으므로 NULL
+                }
+                
+                if existing.data:
+                    # 기존 레코드 업데이트 (session_id 제외)
+                    update_data = {k: v for k, v in analysis_data.items() if k != "session_id"}
+                    supabase.table("session_audio_analysis").update(update_data).eq("session_id", session_id).execute()
+                    print(f"✅ DB 업데이트 완료: session_id={session_id}")
+                else:
+                    # 새 레코드 생성
+                    supabase.table("session_audio_analysis").insert(analysis_data).execute()
+                    print(f"✅ DB 삽입 완료: session_id={session_id}")
                 
             except Exception as db_error:
                 print(f"⚠️ DB 저장 실패 (결과는 반환): {db_error}")
+                import traceback
+                print(f"상세 오류: {traceback.format_exc()}")
         
         # 5) 결과 반환
         result["session_id"] = session_id
