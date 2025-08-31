@@ -12,7 +12,7 @@ from supabase import create_client, Client
 import sys
 sys.path.append('/app')
 from core.config import settings
-from services.dialogue_prompt import TIME_ORIENTATION_PROMPT, NAMING_PROMPT, ROUTER_PROMPT, STANDARD_PROMPT, AFTER_NAMING_PROMPT, LIGHT_STANDARD_PROMPT
+from services.dialogue_prompt import TIME_ORIENTATION_PROMPT, NAMING_PROMPT, ROUTER_PROMPT, STANDARD_PROMPT, AFTER_NAMING_PROMPT, CACHED_PROMPT, BRIDGE_PROMPT, FALLBACK_PROMPT
 
 class WorkflowInput(TypedDict):
     """그래프 실행을 위해 외부에서 주입되는 초기 데이터"""
@@ -26,6 +26,7 @@ class IntermediateState(TypedDict):
     """노드 간 결정에 사용되는 임시 데이터"""
     cache_score: Optional[float]
     routing_decision: str
+    selected_naming_object: Optional[Dict[str, Any]]  # 2턴에서 선택된 naming_object 저장
 
 class FinalOutput(TypedDict):
     """최종적으로 사용자에게 전달될 결과물"""
@@ -56,7 +57,7 @@ class DialogueWorkflow:
             {"item": "모래성", "location": "소년 앞 바닥에", "context": "놀이 중심 아이템"},
             {"item": "삽", "location": "손에 들고 있음", "context": "모래성을 쌓는 도구"},
             {"item": "바다", "location": "배경", "context": "푸른 바다 풍경"},
-            {"item": "조개껍질", "location": "모래사장 곳곳", "context": "자연물"},
+            {"item": "조개껍질", "location": "모래사장 곳곳", "context": "바닷가 여행"},
             {"item": "빨간 티셔츠", "location": "소년이 입고 있음", "context": "의류"}
         ],
         "photo_year": 2000
@@ -260,7 +261,7 @@ class DialogueWorkflow:
             message_history.append({"role": "user", "content": current_user_message})
             
             state["message_history"] = message_history
-            state["intermediate"] = {"cache_score": None, "routing_decision": ""}
+            state["intermediate"] = {"cache_score": None, "routing_decision": "", "selected_naming_object": None}
             state["output"] = {"response_text": "", "response_audio_url": None}
             
             # photo_info와 session_id를 상태에 저장
@@ -273,7 +274,7 @@ class DialogueWorkflow:
             # 에러시 기본 상태 설정
             system_content = "당신은 치매 진단을 위한 따뜻한 대화 시스템입니다."
             state["message_history"] = [{"role": "system", "content": system_content}]
-            state["intermediate"] = {"cache_score": None, "routing_decision": ""}
+            state["intermediate"] = {"cache_score": None, "routing_decision": "", "selected_naming_object": None}
             state["output"] = {"response_text": "", "response_audio_url": None}
             state["session_id"] = conversation_id
         
@@ -354,16 +355,29 @@ class DialogueWorkflow:
                 })
                 
                 state["output"]["response_text"] = response.content.strip()
-                print(f"✅ 이름대기 질문 생성 완료: {response.content.strip()}")
+                generated_question = response.content.strip()
+                print(f"✅ 이름대기 질문 생성 완료: {generated_question}")
                 
-                # CIST 결과를 리스트에 추가
+                # 실제 질문에서 사용된 객체 찾기 (location 매칭으로)
+                actual_selected_object = selected_object  # 기본값
+                for obj in naming_objects:
+                    if obj["location"] in generated_question:
+                        actual_selected_object = obj
+                        print(f"🔄 실제 사용된 객체로 재매칭: {obj['item']} ({obj['location']})")
+                        break
+                
+                # CIST 결과를 리스트에 추가 (실제 사용된 객체 기준)
                 cist_item = {
                     "cist_category": "naming",
-                    "assessment_question": state["output"]["response_text"],  # AI가 생성한 질문
+                    "assessment_question": generated_question,
                     "user_answer": "",  # 다음 턴에서 채워질 예정
-                    "expected_answer": selected_object["item"]  # 사물 이름
+                    "expected_answer": actual_selected_object["item"]
                 }
                 self.cist_results.append(cist_item)
+                
+                # 실제 사용된 naming_object를 상태에 저장 (3턴에서 사용하기 위해)
+                state["intermediate"]["selected_naming_object"] = actual_selected_object
+                print(f"📦 실제 사용된 naming_object 저장: {actual_selected_object}")
                 
             else:
                 # 예외 상황: 3턴 이상에서는 orientation_naming에 들어오면 안됨
@@ -422,7 +436,7 @@ class DialogueWorkflow:
     def standard_response_node(self, state: GraphState) -> GraphState:
         """일반 응답 생성 노드: 턴수에 따라 다른 프롬프트 사용"""
         user_message = state["input_data"]["user_message"]
-        photo_context = state["input_data"]["photo_context"]
+        photo_info = state["input_data"]["photo_context"]
         photo_info = state.get("photo_info", {})
         message_history = state["message_history"]
         
@@ -436,14 +450,28 @@ class DialogueWorkflow:
             print(f"   📝 3턴 전용 AFTER_NAMING_PROMPT 사용")
             
             try:
-                # photo_info에서 메타데이터 구성
-                photo_metadata = {
-                    "description": photo_info.get("description", ""),
-                    "naming_objects": photo_info.get("naming_objects", [])
-                }
+                # 2턴에서 저장된 선택된 naming_object 가져오기
+                selected_naming_object = state["intermediate"].get("selected_naming_object")
                 
                 prompt_template = ChatPromptTemplate.from_template(AFTER_NAMING_PROMPT)
                 chain = prompt_template | self.llm_mini
+                
+                # AFTER_NAMING_PROMPT 템플릿에 맞는 변수 구성
+                photo_metadata = {}
+                if selected_naming_object:
+                    # 선택된 객체 중심으로 메타데이터 구성
+                    photo_metadata = {
+                        "description": photo_info.get("description", ""),
+                        "naming_objects": [selected_naming_object]  # 선택된 객체만 전달
+                    }
+                    print(f"🎯 선택된 객체로 대화 확장: {selected_naming_object['item']} ({selected_naming_object['context']})")
+                else:
+                    # fallback: 전체 naming_objects 사용
+                    photo_metadata = {
+                        "description": photo_info.get("description", ""),
+                        "naming_objects": photo_info.get("naming_objects", [])
+                    }
+                    print(f"⚠️ 선택된 객체 없음, 전체 naming_objects 사용")
                 
                 response = chain.invoke({
                     "user_message": user_message,
@@ -486,33 +514,89 @@ class DialogueWorkflow:
     
     def cache_retrieve_and_evaluate_node(self, state: GraphState) -> GraphState:
         """캐시 검색 및 평가 노드: 인지기능 평가 질문 검색"""
-        user_message = state["input_data"]["user_message"]
+        message_history = state["message_history"]
+        routing_decision = state["intermediate"]["routing_decision"]
         
         try:
-            # Supabase에서 CIST 질문 템플릿 검색
+            # 1. TODO: 실제 구현 시 라우터에서 선택된 assessment_type으로 필터링
+            # 2. Supabase DB 테이블(cist_question_templates)에서 평가 질문 후보(최대 5개)를 가져옴
             response = self.supabase.table("cist_question_templates").select(
                 "*"
             ).limit(5).execute()
             
+            # cached_questions 리스트에 저장
+            cached_questions = []  # 나중에 채워질 캐싱된 평가질문 리스트
+            
             if response.data:
-                # 간단한 유사도 평가 (실제로는 벡터 DB 사용 권장)
-                best_question = response.data[0]
-                cache_score = 0.9  # 임시 점수
+                cached_questions = [q["template_text"] for q in response.data]
+            
+            # CACHED_PROMPT를 사용하여 적합한 질문 선택
+            try:
+                prompt_template = ChatPromptTemplate.from_template(CACHED_PROMPT)
+                chain = prompt_template | self.llm_mini
                 
-                state["intermediate"]["cache_score"] = cache_score
-                state["output"]["response_text"] = best_question["template_text"]
-            else:
-                state["intermediate"]["cache_score"] = 0.3  # 낮은 점수
+                response = chain.invoke({
+                    "message_history": message_history[-10:], # 최근 5턴
+                    "cached_questions": cached_questions,  # 캐싱된 평가질문 리스트
+                    "selected_assessment_type": routing_decision  # 라우터에서 선택된 평가항목
+                })
+                
+                response_content = response.content.strip()
+                
+                # 응답 파싱: "question": <질문> 또는 "route": "fallback"
+                # 성공(1): 질문이 자연스러워서 사용 가능한 경우만
+                if response_content.startswith("question:"):
+                    selected_question = response_content.replace("question:", "").strip()
+                    state["intermediate"]["cache_score"] = 1  # 성공: 질문 사용
+                    state["output"]["response_text"] = selected_question
+                    print(f"✅ 캐시 질문 선택 성공: {selected_question}")
+                else:
+                    # 실패(0): fallback 포함 모든 다른 경우
+                    state["intermediate"]["cache_score"] = 0  # 실패: fallback으로 라우팅
+                    print(f"⚠️ 캐시 질문 부적합, fallback으로 라우팅: {response_content}")
+                        
+            except Exception as llm_error:
+                print(f"❌ CACHED_PROMPT 처리 실패: {llm_error}")
+                # LLM 실패 시 무조건 fallback
+                state["intermediate"]["cache_score"] = 0  # 실패: fallback으로 라우팅
                 
         except Exception as e:
-            print(f"Cache retrieval failed: {e}")
-            state["intermediate"]["cache_score"] = 0.3
+            print(f"❌ Cache retrieval failed: {e}")
+            state["intermediate"]["cache_score"] = 0  # 실패: fallback으로 라우팅
         
         return state    
     
     
     def bridge_generation_node(self, state: GraphState) -> GraphState:
-        pass
+        """브릿지 생성 노드: 사용자 발화와 평가질문을 자연스럽게 연결"""
+        user_message = state["input_data"]["user_message"]
+        message_history = state["message_history"]
+        cached_question = state["output"]["response_text"]  # cache_retrieve_and_evaluate_node에서 선택된 질문
+        
+        print(f"🌉 bridge_generation_node: 브릿지 생성 시작")
+        
+        try:
+            prompt_template = ChatPromptTemplate.from_template(BRIDGE_PROMPT)
+            chain = prompt_template | self.llm_mini
+            
+            response = chain.invoke({
+                "message_history": message_history,
+                "user_message": user_message,
+                "assessment_question": cached_question  # 사용할 평가질문
+            })
+            
+            # 브릿지 + 평가질문이 결합된 최종 응답
+            state["output"]["response_text"] = response.content.strip()
+            print(f"✅ 브릿지 생성 완료: {response.content.strip()}")
+            
+        except Exception as e:
+            print(f"❌ BRIDGE_PROMPT 처리 실패: {e}")
+            # 실패시 기본 브릿지 + 캐시 질문 조합
+            fallback_response = f"그렇군요. {cached_question}"
+            state["output"]["response_text"] = fallback_response
+            print(f"⚠️ 기본 브릿지 사용: {fallback_response}")
+        
+        return state
 
 
     def fallback_node(self, state: GraphState) -> GraphState:
@@ -520,29 +604,37 @@ class DialogueWorkflow:
         user_message = state["input_data"]["user_message"]
         conversation_id = state["input_data"]["conversation_id"]
         photo_context = state["input_data"]["photo_context"]
+        photo_info = state.get("photo_info", {})
+        message_history = state["message_history"]
         
-        fallback_prompt = f"""
-        간단하고 따뜻한 응답을 생성하세요.
-        
-        사용자 메시지: {user_message}
-        
-        30자 이내로 공감하며 답변해주세요.
-        """
+        print(f"🔄 fallback_node: 경량 응답 생성 시작")
         
         try:
-            response = self.llm_nano.invoke([
-                SystemMessage(content=fallback_prompt),
-                HumanMessage(content=user_message)
-            ])
+            # FALLBACK_PROMPT 사용하여 자연스러운 응답 생성
+            prompt_template = ChatPromptTemplate.from_template(FALLBACK_PROMPT)
+            chain = prompt_template | self.llm_nano  # 경량 모델 사용
             
+            # 사진 정보에서 description 추출
+            photo_description = photo_info.get("description", "") if photo_info else ""
+            
+            response = chain.invoke({
+                "user_message": user_message,
+                "photo_description": photo_description,
+                "message_history": message_history[-4:]  # 최신 2턴의 대화 히스토리 (system 메시지 제외하고 4개)
+            })
+            
+            # 경량답변 생성
             state["output"]["response_text"] = response.content.strip()
+            print(f"✅ 경량 응답 생성 완료: {response.content.strip()}")
             
             # 백그라운드에서 고품질 질문 생성 요청
             self._schedule_background_task(user_message, conversation_id, photo_context)
             
         except Exception as e:
-            print(f"Fallback response failed: {e}")
+            print(f"❌ FALLBACK_PROMPT 처리 실패: {e}")
+            # 최종 안전망: 간단한 공감 응답
             state["output"]["response_text"] = "네, 알겠습니다."
+            print(f"⚠️ 최종 안전망 응답 사용")
         
         return state
     
@@ -589,11 +681,14 @@ class DialogueWorkflow:
     
     
     def _cache_decision(self, state: GraphState) -> str:
-        """캐시 점수에 따른 경로 선택"""
+        """캐시 점수에 따른 경로 선택: 1=성공(브릿지), 0=실패(fallback)"""
         cache_score = state["intermediate"]["cache_score"]
-        if cache_score and cache_score >= 0.85:
+        if cache_score == 1:
+            print("✅ 캐시 질문 사용 가능 → bridge 노드로")
             return "use_cache"
-        return "use_fallback"
+        else:
+            print("⚠️ 캐시 질문 부적합 → fallback 노드로")
+            return "use_fallback"
     
     async def _save_conversation_to_db(self, state: GraphState, authenticated_client: Client = None) -> None:
         """대화 내용을 DB에 저장"""
