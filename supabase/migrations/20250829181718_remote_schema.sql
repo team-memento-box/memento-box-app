@@ -74,8 +74,8 @@ BEGIN
   LEFT JOIN (
     SELECT DISTINCT photo_id
     FROM conversations 
-    WHERE user_response_text IS NOT NULL 
-    AND user_response_text != ''
+    WHERE user_input IS NOT NULL 
+    AND user_input != ''
   ) c ON p.id = c.photo_id
   WHERE p.user_id = target_user_id 
   AND p.is_deleted = false
@@ -199,7 +199,7 @@ CREATE TABLE IF NOT EXISTS "public"."cist_responses" (
     "user_id" "uuid" NOT NULL,
     "conversation_id" "uuid",
     "cist_category" character varying(50) NOT NULL,
-    "question_text" "text" NOT NULL,
+    "ai_output" "text" NOT NULL,
     "expected_response" "text",
     "user_response" "text",
     "is_correct" boolean,
@@ -265,10 +265,10 @@ CREATE TABLE IF NOT EXISTS "public"."conversations" (
     "user_id" "uuid" NOT NULL,
     "photo_id" "uuid",
     "conversation_order" integer NOT NULL,
-    "question_text" "text" NOT NULL,
+    "ai_output" "text" NOT NULL,
     "question_type" character varying(50) NOT NULL,
     "cist_category" character varying(50),
-    "user_response_text" "text",
+    "user_input" "text",
     "user_response_audio_url" "text",
     "response_duration_seconds" integer,
     "ai_analysis" "jsonb",

@@ -1,40 +1,42 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import '../models/photo_with_conv.dart';
 import '../data/photo_api.dart';
-import '../models/photo.dart';
 
-class PhotoWithConv {
-  final Photo photo;
-  final bool hasConversation;
-
-  PhotoWithConv({
-    required this.photo,
-    this.hasConversation = false,
-  });
-}
-
+/// 갤러리 캐시 + 로딩 상태를 관리하는 Provider
+///
+/// - 최초 진입 시 네트워크 로드 후 메모리 캐시 보관
+/// - TTL(기본 5분) 안 재진입 시 캐시 즉시 렌더
+/// - Pull-to-refresh 또는 버튼 새로고침시 강제 갱신
 class PhotoProvider with ChangeNotifier {
+  PhotoProvider({Duration? ttl}) : _ttl = ttl ?? const Duration(minutes: 5);
+
+  final Duration _ttl;
+
   List<PhotoWithConv> _photos = [];
   bool _isLoading = false;
+  bool _isRefreshing = false;
   DateTime? _lastUpdated;
   String? _cachedFamilyId;
 
+  // ── Getters
   List<PhotoWithConv> get photos => _photos;
   bool get isLoading => _isLoading;
+  bool get isRefreshing => _isRefreshing;
   bool get hasData => _photos.isNotEmpty;
 
-  /// 캐시 유효 시간 (5분)
   bool get _isCacheValid {
     if (_lastUpdated == null) return false;
-    return DateTime.now().difference(_lastUpdated!) < const Duration(minutes: 5);
+    return DateTime.now().difference(_lastUpdated!) < _ttl;
   }
 
-  /// 사진 불러오기
+  /// 가족별 사진 로드 (캐시 사용)
   Future<void> loadPhotos(String familyId, {bool forceRefresh = false}) async {
-    if (_isLoading) return;
+    // 중복 호출 방지
+    if (_isLoading && !forceRefresh) return;
 
-    // 캐시 재사용
+    // 캐시 유효 + 동일 가족 + 데이터 있으면 네트워크 호출 생략
     if (!forceRefresh && _isCacheValid && _cachedFamilyId == familyId && hasData) {
-      print('📋 Using cached photos (${_photos.length}장)');
+      if (kDebugMode) print('📋 [PhotoProvider] Using cached photos (${_photos.length})');
       return;
     }
 
@@ -42,24 +44,39 @@ class PhotoProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      print('🔄 Loading fresh photos for family $familyId');
-      final familyPhotos =
-          await PhotoApi.fetchRecentFamilyPhotoNewsWithConversations(familyId, limit: 30);
+      if (kDebugMode) {
+        print('🔄 [PhotoProvider] Loading photos from API (family: $familyId, force: $forceRefresh)');
+      }
 
-      _photos = familyPhotos.map((photoData) {
-        final hasConv = photoData['has_conversation'] ?? false;
-        return PhotoWithConv(
-          photo: Photo.fromSupabase(photoData),
-          hasConversation: hasConv,
+      // 1차 시도: 대화여부 포함 API
+      List<Map<String, dynamic>> raw;
+      try {
+        raw = await PhotoApi.fetchRecentFamilyPhotoNewsWithConversations(
+          familyId,
+          limit: 30,
         );
-      }).toList();
+      } catch (e) {
+        if (kDebugMode) {
+          print('⚠️ [PhotoProvider] WithConversations 실패 → fallback 사용: $e');
+        }
+        // 2차 시도: 원래 API (대화여부 없음)
+        final fallback = await PhotoApi.fetchRecentFamilyPhotoNews(
+          familyId,
+          limit: 30,
+        );
+        // has_conversation 필드가 없으므로 false로 세팅
+        raw = fallback.map((m) => {...m, 'has_conversation': false}).toList();
+      }
 
+      _photos = raw.map((m) => PhotoWithConv.fromMap(m)).toList();
       _cachedFamilyId = familyId;
       _lastUpdated = DateTime.now();
 
-      print('✅ Photos loaded and cached: ${_photos.length}');
+      if (kDebugMode) {
+        print('✅ [PhotoProvider] Loaded ${_photos.length} photos (cached)');
+      }
     } catch (e) {
-      print('❌ Error loading photos: $e');
+      if (kDebugMode) print('❌ [PhotoProvider] loadPhotos error: $e');
       rethrow;
     } finally {
       _isLoading = false;
@@ -67,20 +84,40 @@ class PhotoProvider with ChangeNotifier {
     }
   }
 
-  /// 새 사진 추가 (예: 업로드 직후)
+  /// 강제 새로고침 (네트워크 재요청)
+  Future<void> refreshPhotos(String familyId) async {
+    if (_isRefreshing) return;
+    _isRefreshing = true;
+    notifyListeners();
+
+    try {
+      await loadPhotos(familyId, forceRefresh: true);
+    } finally {
+      _isRefreshing = false;
+      notifyListeners();
+    }
+  }
+
+  /// 새 사진 업로드 직후 캐시에 반영하고 싶을 때
   void addPhoto(PhotoWithConv photo) {
-    _photos.insert(0, photo); // 맨 앞에 추가
+    _photos.insert(0, photo);
+    _lastUpdated = DateTime.now();
     notifyListeners();
   }
 
-  /// 강제 갱신 (Pull to Refresh)
-  Future<void> refreshPhotos(String familyId) async {
-    await loadPhotos(familyId, forceRefresh: true);
+  /// 특정 사진의 대화 여부를 나중에 업데이트할 때
+  void markConversation(String photoId, {bool hasConversation = true}) {
+    final idx = _photos.indexWhere((p) => p.id == photoId);
+    if (idx == -1) return;
+    final map = Map<String, dynamic>.from(_photos[idx].photoData);
+    map['has_conversation'] = hasConversation;
+    _photos[idx] = PhotoWithConv.fromMap(map);
+    notifyListeners();
   }
 
-  /// 캐시 초기화
+  /// 로그아웃/가족 전환 등 캐시 모두 초기화
   void clearCache() {
-    _photos.clear();
+    _photos = [];
     _lastUpdated = null;
     _cachedFamilyId = null;
     notifyListeners();

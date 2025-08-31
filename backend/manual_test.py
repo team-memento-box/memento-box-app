@@ -53,9 +53,9 @@ def test_with_credentials():
                 "session_id": test_session_id,
                 "user_id": test_user_id,
                 "conversation_order": 1,
-                "question_text": "안녕하세요! 이 사진에 대해 이야기해볼까요?",
+                "ai_output": "안녕하세요! 이 사진에 대해 이야기해볼까요?",
                 "question_type": "open_ended",
-                "user_response_text": "네, 좋습니다!",
+                "user_input": "네, 좋습니다!",
                 "is_cist_item": False
             }
             

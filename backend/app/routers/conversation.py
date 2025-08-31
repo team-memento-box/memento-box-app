@@ -22,7 +22,7 @@ async def get_latest_conversation(photo_id: UUID):
         
         # 해당 세션의 대화 내역도 함께 조회
         conversations = supabase_admin.table("conversations").select(
-            "id, question_text, user_response_text, conversation_order"
+            "id, ai_output, user_input, conversation_order"
         ).eq("session_id", session["id"]).order("conversation_order").execute()
         
         return JSONResponse(content={
@@ -57,7 +57,7 @@ async def get_conversation_for_photo(photo_id: UUID, session_id: UUID):
         
         # 대화 내역 조회
         conversations = supabase_admin.table("conversations").select(
-            "id, question_text, user_response_text, conversation_order, created_at"
+            "id, ai_output, user_input, conversation_order, created_at"
         ).eq("session_id", str(session_id)).order("conversation_order").execute()
         
         return JSONResponse(content={
@@ -95,7 +95,7 @@ async def get_session_conversation_history(session_id: UUID):
     """세션의 모든 대화 내역을 시간순으로 조회"""
     try:
         response = supabase_admin.table("conversations").select(
-            "id, question_text, user_response_text, conversation_order, question_type, is_cist_item, created_at"
+            "id, ai_output, user_input, conversation_order, question_type, is_cist_item, created_at"
         ).eq("session_id", str(session_id)).order("conversation_order").execute()
         
         return JSONResponse(content={

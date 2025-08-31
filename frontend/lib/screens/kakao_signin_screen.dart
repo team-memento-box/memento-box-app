@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart' as kakao;
 import '../core/supabase_service.dart';
 import '../services/user_service.dart';
-import '../user_provider.dart';
+import '../providers/user_provider.dart';
 import 'dart:async';
 
 class KakaoSigninScreen extends StatefulWidget {

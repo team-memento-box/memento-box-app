@@ -6,7 +6,7 @@ import '../widgets/tap_widget.dart';
 import '../widgets/group_bar_widget.dart';
 import 'report_main.dart';
 import 'package:provider/provider.dart';
-import '../user_provider.dart';
+import '../providers/user_provider.dart';
 import '../data/report_api.dart';
 import '../models/report.dart';
 

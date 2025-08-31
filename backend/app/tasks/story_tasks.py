@@ -32,7 +32,7 @@ async def generate_grandparent_story_openai(conversations_data):
     
     # 대화 데이터를 텍스트로 변환
     conversation_text = "\n".join([
-        f"질문: {conv['question_text']}\n답변: {conv['user_response_text']}"
+        f"질문: {conv['ai_output']}\n답변: {conv['user_input']}"
         for conv in conversations_data
     ])
     
@@ -135,7 +135,7 @@ async def generate_story_async(session_id: str):
     
     # 대화 기록 가져오기
     conversations_response = supabase_admin.table("conversations").select(
-        "id, conversation_order, question_text, user_response_text"
+        "id, conversation_order, ai_output, user_input"
     ).eq("session_id", session_id).order("conversation_order").execute()
     
     if not conversations_response.data:

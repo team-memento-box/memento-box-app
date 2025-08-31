@@ -3,8 +3,8 @@ import '../widgets/image_card_widget.dart';
 import '../widgets/tap_widget.dart';
 import '../widgets/group_bar_widget.dart';
 import 'package:provider/provider.dart';
-import '../user_provider.dart';
-import '../data/photo_api.dart';
+import '../providers/user_provider.dart';
+import '../providers/photo_provider.dart';
 
 
 
@@ -16,10 +16,6 @@ class HomeUpdateScreen extends StatefulWidget {
 }
 
 class _HomeUpdateScreenState extends State<HomeUpdateScreen> {
-  List<Map<String, dynamic>> recentNews = [];
-  bool isLoading = true;
-  String? errorMessage;
-
   @override
   void initState() {
     super.initState();
@@ -28,34 +24,26 @@ class _HomeUpdateScreenState extends State<HomeUpdateScreen> {
 
   Future<void> _loadRecentNews() async {
     try {
-      setState(() {
-        isLoading = true;
-        errorMessage = null;
-      });
-
       final userProvider = Provider.of<UserProvider>(context, listen: false);
       final familyId = userProvider.familyId;
 
       if (familyId == null || familyId.isEmpty) {
-        setState(() {
-          errorMessage = '가족 정보를 찾을 수 없습니다.';
-          isLoading = false;
-        });
         return;
       }
 
-      final news = await PhotoApi.fetchRecentFamilyPhotoNews(familyId, limit: 10);
-      
-      setState(() {
-        recentNews = news;
-        isLoading = false;
-      });
+      // PhotoProvider를 사용하여 캐시된 데이터 로드
+      final photoProvider = Provider.of<PhotoProvider>(context, listen: false);
+      await photoProvider.loadPhotos(familyId);
     } catch (e) {
       print('❌ Error loading recent news: $e');
-      setState(() {
-        errorMessage = '최근 소식을 불러오는데 실패했습니다.';
-        isLoading = false;
-      });
+    }
+  }
+
+  Future<void> _refreshNews() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final photoProvider = Provider.of<PhotoProvider>(context, listen: false);
+    if (userProvider.familyId != null) {
+      await photoProvider.refreshPhotos(userProvider.familyId!);
     }
   }
 
@@ -71,7 +59,7 @@ class _HomeUpdateScreenState extends State<HomeUpdateScreen> {
       body: Container(
         color: const Color(0xFFF7F7F7),
         child: RefreshIndicator(
-          onRefresh: _loadRecentNews,
+          onRefresh: _refreshNews,
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -91,77 +79,62 @@ class _HomeUpdateScreenState extends State<HomeUpdateScreen> {
   }
 
   Widget _buildRecentNews() {
-    if (isLoading) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(20.0),
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
+    return Consumer<PhotoProvider>(
+      builder: (context, photoProvider, _) {
+        // 로딩 중 (데이터가 없는 상태)
+        if (photoProvider.isLoading && !photoProvider.hasData) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(20.0),
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
 
-    if (errorMessage != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            children: [
-              Icon(Icons.error_outline, size: 48, color: Colors.grey[400]),
-              const SizedBox(height: 8),
-              Text(
-                errorMessage!,
-                style: TextStyle(color: Colors.grey[600]),
-                textAlign: TextAlign.center,
+        // 데이터가 없음
+        if (photoProvider.photos.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Column(
+                children: [
+                  Icon(Icons.photo_library_outlined, size: 48, color: Colors.grey[400]),
+                  const SizedBox(height: 8),
+                  Text(
+                    '아직 업로드된 사진이 없습니다.\n가족들과 추억을 공유해보세요!',
+                    style: TextStyle(color: Colors.grey[600]),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              ElevatedButton(
-                onPressed: _loadRecentNews,
-                child: const Text('다시 시도'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
+            ),
+          );
+        }
 
-    if (recentNews.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            children: [
-              Icon(Icons.photo_library_outlined, size: 48, color: Colors.grey[400]),
-              const SizedBox(height: 8),
-              Text(
-                '아직 업로드된 사진이 없습니다.\n가족들과 추억을 공유해보세요!',
-                style: TextStyle(color: Colors.grey[600]),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Column(
-      children: recentNews.map<Widget>((news) {
-        final uploadDate = news['upload_date'] as DateTime;
-        final formattedDate = '${uploadDate.year}년 ${uploadDate.month.toString().padLeft(2, '0')}월 ${uploadDate.day.toString().padLeft(2, '0')}일';
+        // 최근 10개 사진만 표시
+        final recentPhotos = photoProvider.photos.take(10).toList();
 
         return Column(
-          children: [
-            NewsCard(
-              name: news['user_name'] ?? '이름 없음',
-              role: news['family_role'] ?? '가족',
-              content: news['content'] ?? '새로운 사진 추가',
-              imageUrl: news['image_url'],
-              userProfileImage: news['user_profile_image'],
-              date: formattedDate,
-            ),
-            const SizedBox(height: 15),
-          ],
+          children: recentPhotos.map<Widget>((photo) {
+            final uploadDate = photo.createdAt;
+            final formattedDate = '${uploadDate.year}년 ${uploadDate.month.toString().padLeft(2, '0')}월 ${uploadDate.day.toString().padLeft(2, '0')}일';
+
+            return Column(
+              children: [
+                NewsCard(
+                  name: photo.photoData['user_name']?.toString() ?? '이름 없음',
+                  role: photo.photoData['family_role']?.toString() ?? '가족',
+                  content: '새로운 사진 추가',
+                  imageUrl: photo.url,
+                  userProfileImage: photo.photoData['user_profile_image']?.toString(),
+                  date: formattedDate,
+                ),
+                const SizedBox(height: 15),
+              ],
+            );
+          }).toList(),
         );
-      }).toList(),
+      },
     );
   }
 }
