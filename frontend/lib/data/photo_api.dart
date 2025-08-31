@@ -2,8 +2,123 @@ import '../core/supabase_service.dart';
 import '../models/photo.dart';
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class PhotoApi {
+  // FastAPI 서버 URL - .env 파일에서 동적으로 가져오기
+  static String get _fastApiBaseUrl {
+    final baseUrl = dotenv.env['BASE_URL'] ?? 'http://localhost:8000';
+    print('🔍 [DEBUG] Using BASE_URL: $baseUrl');
+    return '$baseUrl/api';
+  }
+  
+  /// 사진 분석 API 호출
+  static Future<Map<String, dynamic>?> analyzePhoto(String photoId) async {
+    try {
+      final apiUrl = _fastApiBaseUrl; // 디버깅을 위해 한 번만 호출
+      print('📤 [DEBUG] analyzePhoto 시작 - photoId: $photoId');
+      print('📤 [DEBUG] API URL: $apiUrl/photos/$photoId/analyze');
+      print('📤 Starting photo analysis for: $photoId');
+      
+      // Supabase에서 JWT 토큰 가져오기
+      final session = SupabaseService.client.auth.currentSession;
+      print('📤 [DEBUG] 현재 세션: ${session != null ? "존재" : "없음"}');
+      
+      if (session?.accessToken == null) {
+        print('❌ [DEBUG] JWT 토큰이 null임');
+        print('❌ No authentication token available');
+        throw Exception('인증 토큰이 없습니다.');
+      }
+      
+      print('📤 [DEBUG] JWT 토큰 앞 20글자: ${session!.accessToken.substring(0, 20)}...');
+      
+      final uri = Uri.parse('$apiUrl/photos/$photoId/analyze');
+      print('📤 [DEBUG] HTTP POST 요청 시작 - URI: $uri');
+      
+      final response = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${session.accessToken}',
+        },
+      );
+      
+      print('📥 [DEBUG] HTTP 응답 수신 완료');
+      print('📥 Analysis API response status: ${response.statusCode}');
+      print('📥 [DEBUG] Response body length: ${response.body.length}');
+      
+      if (response.statusCode == 200) {
+        print('📥 [DEBUG] 성공 응답 - JSON 파싱 시작');
+        final responseData = json.decode(response.body) as Map<String, dynamic>;
+        print('📥 [DEBUG] JSON 파싱 완료 - keys: ${responseData.keys}');
+        print('✅ Photo analysis completed successfully');
+        return responseData;
+      } else {
+        print('📥 [DEBUG] 에러 응답 - body: ${response.body}');
+        try {
+          final errorData = json.decode(response.body);
+          final errorMessage = errorData['detail'] ?? 'Unknown error';
+          print('❌ Analysis API error: $errorMessage');
+          throw Exception('사진 분석 실패: $errorMessage');
+        } catch (jsonError) {
+          print('❌ [DEBUG] 에러 응답 JSON 파싱 실패: $jsonError');
+          throw Exception('사진 분석 실패 - HTTP ${response.statusCode}: ${response.body}');
+        }
+      }
+    } catch (e, stackTrace) {
+      print('❌ [DEBUG] analyzePhoto 예외 발생:');
+      print('❌ 에러: $e');
+      print('❌ 타입: ${e.runtimeType}');
+      print('❌ 스택 트레이스: $stackTrace');
+      print('❌ Error analyzing photo: $e');
+      throw Exception('사진 분석 중 오류가 발생했습니다: $e');
+    }
+  }
+  
+  /// 사진 분석 결과 조회
+  static Future<Map<String, dynamic>?> getPhotoAnalysis(String photoId) async {
+    try {
+      final apiUrl = _fastApiBaseUrl; // 디버깅을 위해 한 번만 호출
+      print('📤 Getting photo analysis for: $photoId');
+      print('📤 [DEBUG] API URL: $apiUrl/photos/$photoId/analysis');
+      
+      // Supabase에서 JWT 토큰 가져오기
+      final session = SupabaseService.client.auth.currentSession;
+      if (session?.accessToken == null) {
+        print('❌ No authentication token available');
+        throw Exception('인증 토큰이 없습니다.');
+      }
+      
+      final response = await http.get(
+        Uri.parse('$apiUrl/photos/$photoId/analysis'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${session!.accessToken}',
+        },
+      );
+      
+      print('📥 Get analysis API response status: ${response.statusCode}');
+      
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body) as Map<String, dynamic>;
+        print('✅ Photo analysis data retrieved successfully');
+        return responseData;
+      } else if (response.statusCode == 404) {
+        print('⚠️ Photo not found or no access');
+        return null;
+      } else {
+        final errorData = json.decode(response.body);
+        final errorMessage = errorData['detail'] ?? 'Unknown error';
+        print('❌ Get analysis API error: $errorMessage');
+        throw Exception('분석 결과 조회 실패: $errorMessage');
+      }
+    } catch (e) {
+      print('❌ Error getting photo analysis: $e');
+      throw Exception('분석 결과 조회 중 오류가 발생했습니다: $e');
+    }
+  }
   /// 사용자의 모든 사진 조회
   static Future<List<Photo>> fetchPhotos(String userId, {
     String? albumId,
@@ -65,6 +180,7 @@ class PhotoApi {
     String? locationName,
     double? latitude,
     double? longitude,
+    String? customFilePath, // 커스텀 파일 경로 추가
   }) async {
     try {
       print('📤 Uploading photo: $originalFilename');
@@ -74,11 +190,13 @@ class PhotoApi {
       final fileSize = bytes.length;
       final mimeType = _getMimeType(originalFilename);
       
-      // 고유한 파일명 생성
+      // 파일 경로 및 이름 설정
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final extension = originalFilename.split('.').last;
       final filename = '${timestamp}_${userId.substring(0, 8)}.$extension';
-      final filePath = '$userId/$filename';
+      
+      // 커스텀 파일 경로가 제공되면 사용, 아니면 기본 경로
+      final filePath = customFilePath ?? '$userId/$filename';
       
       // Supabase Storage에 업로드
       await SupabaseService.client.storage
@@ -121,11 +239,46 @@ class PhotoApi {
 
       print('✅ Photo metadata saved: ${response['id']}');
       
-      return Photo.fromSupabase(response);
+      final photo = Photo.fromSupabase(response);
+      
+      // 업로드 완료 후 백그라운드에서 사진 분석 트리거 (실패해도 업로드는 성공으로 처리)
+      triggerPhotoAnalysisInBackground(photo.id);
+      
+      return photo;
     } catch (e) {
       print('❌ Error uploading photo: $e');
       throw Exception('사진 업로드에 실패했습니다: $e');
     }
+  }
+
+  /// 백그라운드에서 사진 분석 트리거 (비동기, 실패해도 예외 던지지 않음)
+  static void triggerPhotoAnalysisInBackground(String photoId) {
+    print('🚀 [DEBUG] triggerPhotoAnalysisInBackground 호출됨 - photoId: $photoId');
+    
+    // 백그라운드에서 실행하여 사용자 경험에 영향 주지 않음
+    Future.microtask(() async {
+      try {
+        print('🔍 [DEBUG] Future.microtask 시작 - photoId: $photoId');
+        print('🔍 Triggering background photo analysis for: $photoId');
+        
+        final result = await analyzePhoto(photoId);
+        
+        if (result != null) {
+          print('✅ [DEBUG] 분석 결과 받음: ${result.keys}');
+          print('✅ Background photo analysis completed for: $photoId');
+        } else {
+          print('⚠️ [DEBUG] 분석 결과가 null임 - photoId: $photoId');
+        }
+      } catch (e, stackTrace) {
+        print('❌ [DEBUG] Background photo analysis 예외 발생:');
+        print('❌ 에러: $e');
+        print('❌ 스택 트레이스: $stackTrace');
+        print('⚠️ Background photo analysis failed for $photoId: $e');
+        // 백그라운드 작업이므로 예외를 던지지 않음
+      }
+    });
+    
+    print('🏁 [DEBUG] triggerPhotoAnalysisInBackground 완료 (Future.microtask 시작됨)');
   }
 
   /// 사진 삭제 (soft delete)
