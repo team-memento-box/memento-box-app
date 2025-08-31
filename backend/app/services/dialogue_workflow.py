@@ -177,7 +177,7 @@ class DialogueWorkflow:
             
             # 해당 세션의 기존 대화 내역 조회
             conversations_response = client.table("conversations").select(
-                "id, question_text, user_response_text, conversation_order"
+                "id, ai_output, user_input, conversation_order"
             ).eq("session_id", session_id).order("conversation_order").execute()
             
             print(f"💬 기존 대화 내역: {len(conversations_response.data) if conversations_response.data else 0}개")
@@ -192,15 +192,15 @@ class DialogueWorkflow:
             # 기존 대화 내용 추가
             if conversations_response.data:
                 for conv in conversations_response.data:
-                    if conv.get("question_text"):
+                    if conv.get("ai_output"):
                         message_history.append({
                             "role": "assistant", 
-                            "content": conv["question_text"]
+                            "content": conv["ai_output"]
                         })
-                    if conv.get("user_response_text"):
+                    if conv.get("user_input"):
                         message_history.append({
                             "role": "user", 
-                            "content": conv["user_response_text"]
+                            "content": conv["user_input"]
                         })
             
             state["message_history"] = message_history
@@ -457,9 +457,9 @@ class DialogueWorkflow:
                 "user_id": user_id,
                 "photo_id": photo_context.get("photo_id"),
                 "conversation_order": next_order,
-                "question_text": ai_response,
+                "ai_output": ai_response,
                 "question_type": "open_ended",  # 기본값
-                "user_response_text": user_message,
+                "user_input": user_message,
                 "is_cist_item": False
             }
             

@@ -69,6 +69,9 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
   bool _isApiCallInProgress = false;
   Timer? _apiTimeoutTimer;
 
+  // 자동 스크롤을 위한 ScrollController 추가
+  final ScrollController _scrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
@@ -87,6 +90,7 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _audioService.dispose();
     super.dispose();
   }
@@ -103,6 +107,9 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
       setState(() {
         apiResult = conversation.question;
       });
+
+      // 새로운 AI 응답이 들어올 때 자동 스크롤
+      _scrollToBottom();
 
       // === 초기 질문/음성파일만 재생 ===
       if (conversation.audioUrl != null && conversation.audioUrl.isNotEmpty) {
@@ -323,6 +330,9 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
           print('[디버그] _recognizedText 업데이트: $_recognizedText');
         });
         
+        // 새로운 사용자 입력이 들어올 때 자동 스크롤
+        _scrollToBottom();
+        
         // AI 응답 음성 재생 (있는 경우에만)
         if (data['audio_url'] != null && data['audio_url'].isNotEmpty) {
           await _audioService.loadAudio(data['audio_url']);
@@ -352,6 +362,9 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
                 apiResult = conversation.question;
               });
               
+              // AI의 새로운 질문이 들어올 때 자동 스크롤
+              _scrollToBottom();
+              
               // AI의 새로운 질문 음성 재생
               if (conversation.audioUrl != null && conversation.audioUrl.isNotEmpty) {
                 await _audioService.loadAudio(conversation.audioUrl);
@@ -377,6 +390,9 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
             setState(() {
               apiResult = conversation.question;
             });
+            
+            // AI의 새로운 질문이 들어올 때 자동 스크롤
+            _scrollToBottom();
             
             if (conversation.audioUrl != null && conversation.audioUrl.isNotEmpty) {
               await _audioService.loadAudio(conversation.audioUrl);
@@ -460,6 +476,7 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
       ),
 
       body: SingleChildScrollView(
+        controller: _scrollController,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Column(
@@ -577,6 +594,19 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
   void toggleSTT() {
     setState(() {
       isSTTActive = !isSTTActive;
+    });
+  }
+
+  /// 자동 스크롤 함수
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients && mounted) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
     });
   }
 
