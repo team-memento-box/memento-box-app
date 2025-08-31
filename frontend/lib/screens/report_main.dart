@@ -276,8 +276,12 @@ class _ReportMainScreenState extends State<ReportMainScreen>
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => ReportDetailCistScreen(report: widget.report),
+                      builder: (context) => ReportDetailCistScreen(
+                        report: widget.report,
+                        sessionId: widget.report!.sessionId, // 👈 Report 모델에 있는 sessionId 전달
+                      ),
                     ),
+
                   );
                 },
                 behavior: HitTestBehavior.translucent,
@@ -427,7 +431,10 @@ class _ReportMainScreenState extends State<ReportMainScreen>
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => ReportDetailCistScreen(report: widget.report),
+                      builder: (context) => ReportDetailCistScreen(
+                        report: widget.report,
+                        sessionId: widget.report!.sessionId, // 👈 필수 파라미터 전달
+                      ),
                     ),
                   );
                 },

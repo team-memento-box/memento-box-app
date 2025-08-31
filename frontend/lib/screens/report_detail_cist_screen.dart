@@ -4,11 +4,13 @@ import '../user_provider.dart';
 import '../models/report.dart';
 import '../widgets/tap_widget.dart';
 import '../widgets/group_bar_widget.dart';
+import '../services/user_service.dart';
 
 class ReportDetailCistScreen extends StatefulWidget {
   final Report? report;
+  final String sessionId;
 
-  const ReportDetailCistScreen({super.key, this.report});
+  const ReportDetailCistScreen({super.key, this.report, required this.sessionId});
 
   @override
   State<ReportDetailCistScreen> createState() => _ReportDetailCistScreenState();
@@ -16,7 +18,41 @@ class ReportDetailCistScreen extends StatefulWidget {
 
 class _ReportDetailCistScreenState extends State<ReportDetailCistScreen> {
   int _currentCardIndex = 0;
+  List<Map<String, dynamic>> _cistCategories = [];
+  bool _isLoading = true;
   
+  @override
+  void initState() {
+    super.initState();
+    _loadCistData();
+  }
+  
+  Future<void> _loadCistData() async {
+    try {
+      final sessionId = widget.sessionId;
+      
+      if (sessionId.isNotEmpty) {
+        print('🔍 Loading CIST data for session: $sessionId');
+        final cistData = await UserService.getCistDataBySession(sessionId);
+        setState(() {
+          _cistCategories = cistData;
+          _isLoading = false;
+        });
+      } else {
+        print('❌ Session ID not found');
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('❌ CIST 데이터 로딩 오류: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+
   @override
   Widget build(BuildContext context) {
     final familyName = Provider.of<UserProvider>(context).familyName ?? '우리 가족';
@@ -145,7 +181,30 @@ class _ReportDetailCistScreenState extends State<ReportDetailCistScreen> {
                   const SizedBox(height: 30),
 
                   // CIST 상세 결과 카드
-                  _buildCISTDetailCard(),
+                  _isLoading 
+                      ? const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(50.0),
+                            child: CircularProgressIndicator(),
+                          ),
+                        )
+                      : _cistCategories.isEmpty
+                          ? const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(50.0),
+                                child: Text(
+                                  'CIST 데이터가 없습니다.\n대화를 통해 인지 평가를 진행해보세요.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Color(0xFF777777),
+                                    fontSize: 14,
+                                    fontFamily: 'Pretendard',
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            )
+                          : _buildCISTDetailCard(),
 
                   const SizedBox(height: 20),
 
@@ -200,33 +259,9 @@ class _ReportDetailCistScreenState extends State<ReportDetailCistScreen> {
   }
 
   Widget _buildCISTDetailCard() {
-    // 임시 CIST 데이터
-    final cistCategories = [
-      {
-        'category': '시간지남력',
-        'description': '현재 자신이 놓인 시간, 날짜, 계절 등의 상황을 올바르게 인식하는 능력',
-        'question': '오늘은 무슨 요일인가요?',
-        'answer': '잘 모르겠어요.',
-        'score': 0,
-        'isCorrect': false,
-      },
-      {
-        'category': '기억력 등록',
-        'description': '새로운 정보를 기억하고 저장하는 능력',
-        'question': '바다, 수박, 모래. 지금 따라 말해 보시고 잠시 후에 다시 여쭐게요.',
-        'answer': '바다, 수박, 모래',
-        'score': 1,
-        'isCorrect': true,
-      },
-      {
-        'category': '회상',
-        'description': '이전에 학습한 정보를 기억해내는 능력',
-        'question': '아까 처음에 드린 세 단어 기억나세요? 말씀해 보세요.',
-        'answer': '바다, 수박, 모래',
-        'score': 1,
-        'isCorrect': true,
-      },
-    ];
+    if (_cistCategories.isEmpty) {
+      return const SizedBox.shrink();
+    }
 
     return Container(
       width: double.infinity,
@@ -249,7 +284,7 @@ class _ReportDetailCistScreenState extends State<ReportDetailCistScreen> {
             clipBehavior: Clip.none,
             children: [
               // 현재 카드 표시
-              _buildCategoryItem(cistCategories[_currentCardIndex]),
+              _buildCategoryItem(_cistCategories[_currentCardIndex]),
               
               // 왼쪽 화살표 (카드 왼쪽 테두리에 걸치게)
               Positioned(
@@ -287,12 +322,7 @@ class _ReportDetailCistScreenState extends State<ReportDetailCistScreen> {
                 child: GestureDetector(
                   onTap: () {
                     print('🖱️ Right arrow GestureDetector tapped!');
-                    final cistCategories = [
-                      {'category': '시간지남력'},
-                      {'category': '기억력 등록'},
-                      {'category': '회상'},
-                    ];
-                    if (_currentCardIndex < cistCategories.length - 1) {
+                    if (_currentCardIndex < _cistCategories.length - 1) {
                       _nextCard();
                     } else {
                       print('⚠️ Right arrow disabled - at last card');
@@ -303,7 +333,7 @@ class _ReportDetailCistScreenState extends State<ReportDetailCistScreen> {
                     // color: Colors.blue.withOpacity(0.2), // 디버깅용 - 클릭 영역 확인
                     padding: const EdgeInsets.all(25), // 아이콘 기준으로 25px씩 확장
                     child: Opacity(
-                      opacity: _currentCardIndex < 2 ? 0.8 : 0.3, // 활성화 상태에 따른 투명도
+                      opacity: _currentCardIndex < _cistCategories.length - 1 ? 0.8 : 0.3, // 활성화 상태에 따른 투명도
                       child: Transform.rotate(
                         angle: 3.14159, // 180도 회전 (π 라디안)
                         child: Image.asset(
@@ -337,13 +367,8 @@ class _ReportDetailCistScreenState extends State<ReportDetailCistScreen> {
   
   void _nextCard() {
     print('➡️ Next card clicked - Current index: $_currentCardIndex');
-    final cistCategories = [
-      {'category': '시간지남력'},
-      {'category': '기억력 등록'},
-      {'category': '회상'},
-    ];
-    print('📝 Total categories: ${cistCategories.length}');
-    if (_currentCardIndex < cistCategories.length - 1) {
+    print('📝 Total categories: ${_cistCategories.length}');
+    if (_currentCardIndex < _cistCategories.length - 1) {
       setState(() {
         _currentCardIndex++;
       });
@@ -428,7 +453,7 @@ class _ReportDetailCistScreenState extends State<ReportDetailCistScreen> {
                     ),
                   ),
                   child: Text(
-                    category['question'],
+                    (category['question'] ?? '').toString().split(':').last.trim(),
                     style: const TextStyle(
                       color: Color(0xFF111111),
                       fontSize: 10,
