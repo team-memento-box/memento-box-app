@@ -33,13 +33,13 @@ class AnalysisResult(BaseModel):
     created_at: str
 
 @router.get("/user/{user_id}/session/{session_id}", response_model=List[AllResponseData])
-async def get_all_user_response_texts(user_id:UUID, session_id: UUID):
+async def get_all_user_inputs(user_id:UUID, session_id: UUID):
     """
     특정 사용자의 특정 대화에 대한 사용자 답변 조회
     """
     try:
         response = supabase.table("conversations")\
-            .select("user_id, session_id, user_response_text")\
+            .select("user_id, session_id, user_input")\
             .eq("user_id", str(user_id))\
             .eq("session_id", str(session_id))\
             .execute()
@@ -47,11 +47,11 @@ async def get_all_user_response_texts(user_id:UUID, session_id: UUID):
         if not response.data:
             raise HTTPException(status_code=404, detail="Analysis not found")
         
-        # 모든 user_response_text를 하나로 합치기
+        # 모든 user_input를 하나로 합치기
         total_response_texts = ""
         for item in response.data:
-            if item.get('user_response_text'):
-                total_response_texts += item['user_response_text'] + " "
+            if item.get('user_input'):
+                total_response_texts += item['user_input'] + " "
 
         # 통합된 데이터 반환
         unified_data = AllResponseData(

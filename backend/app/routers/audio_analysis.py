@@ -56,9 +56,9 @@ class AudioFileInfo(BaseModel):
     """오디오 파일 정보 모델"""
     conversation_id: str
     conversation_order: int
-    question_text: str
+    ai_output: str
     user_response_audio_url: Optional[str]
-    user_response_text: Optional[str]
+    user_input: Optional[str]
     question_type: str
     created_at: str
 
@@ -91,7 +91,7 @@ async def get_session_audio_files(
     try:
         # 세션의 모든 대화 조회 (conversation_order 순서대로)
         response = supabase.table("conversations").select(
-            "id, conversation_order, question_text, user_response_text, "
+            "id, conversation_order, ai_output, user_input, "
             "user_response_audio_url, question_type, created_at"
         ).eq(
             "session_id", session_id
@@ -115,8 +115,8 @@ async def get_session_audio_files(
             audio_info = AudioFileInfo(
                 conversation_id=str(conv["id"]),
                 conversation_order=conv["conversation_order"],
-                question_text=conv["question_text"],
-                user_response_text=conv["user_response_text"],
+                ai_output=conv["ai_output"],
+                user_input=conv["user_input"],
                 user_response_audio_url=conv["user_response_audio_url"],
                 question_type=conv["question_type"],
                 created_at=conv["created_at"]
@@ -729,3 +729,113 @@ async def full_audio_analysis_pipeline(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"파이프라인 실행 실패: {str(e)}")
+
+
+# ---------------------------------------------------------------------------
+# (NEW) 백그라운드 파이프라인 엔드포인트
+# ---------------------------------------------------------------------------
+@router.post("/session/{session_id}/full-analysis-async", summary="Start background audio analysis pipeline")
+async def start_full_audio_analysis_background(
+    session_id: str,
+    photo_id: Optional[str] = Query(None, description="분석과 연관된 photo ID"),
+    target_sr: int = Query(16000, ge=8000, le=48000),
+    normalize: bool = Query(True),
+    force_concat: bool = Query(False, description="기존 병합 파일이 있어도 다시 병합할지 여부"),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """
+    전체 오디오 분석 파이프라인을 백그라운드에서 실행합니다.
+    작업 ID를 반환하여 진행상황을 추적할 수 있습니다.
+    """
+    try:
+        uuid.UUID(session_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"유효하지 않은 세션 ID 형식입니다: {session_id}"
+        )
+    
+    # 세션 존재 여부 확인
+    session_response = supabase.table("sessions").select("id").eq("id", session_id).execute()
+    if not session_response.data:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+    
+    # Celery 작업 시작
+    from tasks.audio_analysis_tasks import process_full_audio_analysis_pipeline_background
+    
+    task = process_full_audio_analysis_pipeline_background.delay(
+        session_id=session_id,
+        photo_id=photo_id,
+        target_sr=target_sr,
+        normalize=normalize,
+        force_concat=force_concat
+    )
+    
+    return {
+        "session_id": session_id,
+        "task_id": task.id,
+        "status": "started",
+        "message": "오디오 분석 파이프라인이 백그라운드에서 시작되었습니다."
+    }
+
+
+@router.get("/task/{task_id}/status", summary="Get background task status")
+async def get_task_status(task_id: str):
+    """
+    백그라운드 작업의 진행상황을 조회합니다.
+    """
+    from tasks.audio_analysis_tasks import celery_app
+    from celery.result import AsyncResult
+    
+    try:
+        # Celery 작업 결과 조회
+        result = AsyncResult(task_id, app=celery_app)
+        
+        if result.state == 'PENDING':
+            response = {
+                'task_id': task_id,
+                'state': result.state,
+                'status': 'pending',
+                'message': '작업이 대기 중입니다.'
+            }
+        elif result.state == 'PROCESSING':
+            response = {
+                'task_id': task_id,
+                'state': result.state,
+                'status': 'processing',
+                'step': result.info.get('step', 'unknown'),
+                'progress': result.info.get('progress', 0),
+                'message': result.info.get('message', '처리 중...'),
+                'session_id': result.info.get('session_id')
+            }
+            # 단계별 추가 정보
+            if 'concat_result' in result.info:
+                response['concat_result'] = result.info['concat_result']
+            if 'feature_count' in result.info:
+                response['feature_count'] = result.info['feature_count']
+                
+        elif result.state == 'SUCCESS':
+            response = {
+                'task_id': task_id,
+                'state': result.state,
+                'status': 'completed',
+                'progress': 100,
+                'message': '작업이 완료되었습니다.',
+                'result': result.result
+            }
+        else:  # FAILURE or other states
+            response = {
+                'task_id': task_id,
+                'state': result.state,
+                'status': 'failed',
+                'error': str(result.info) if result.info else 'Unknown error',
+                'message': '작업이 실패했습니다.'
+            }
+            
+        return response
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"작업 상태 조회 실패: {str(e)}"
+        )

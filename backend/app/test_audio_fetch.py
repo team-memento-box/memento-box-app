@@ -53,7 +53,7 @@ def test_get_session_audio_files(session_id: str):
             if audio_conversations:
                 print("\n📁 오디오 파일이 있는 대화들:")
                 for audio_file in audio_conversations:
-                    print(f"  - 대화 #{audio_file['conversation_order']}: {audio_file['question_text'][:50]}...")
+                    print(f"  - 대화 #{audio_file['conversation_order']}: {audio_file['ai_output'][:50]}...")
                     print(f"    오디오 URL: {audio_file['user_response_audio_url']}")
             else:
                 print("⚠️ 이 세션에는 오디오 파일이 없습니다.")

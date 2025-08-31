@@ -210,8 +210,8 @@ class _PhotoDetailScreenState extends State<PhotoDetailScreen> {
                 // 버튼들
                 Row(
                   children: [
-                    // 테스트용 백그라운드 작업 버튼 추가
-                    if (!isGuardian) // 환자용 UI에서만 표시
+                    // 테스트용 백그라운드 작업 버튼들 (환자용)
+                    if (!isGuardian) ...[
                       Expanded(
                         child: ElevatedButton(
                           onPressed: () async {
@@ -234,7 +234,31 @@ class _PhotoDetailScreenState extends State<PhotoDetailScreen> {
                           ),
                         ),
                       ),
-                    if (!isGuardian) const SizedBox(width: 12),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            await _startAudioAnalysis();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF6366F1),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                          ),
+                          child: const Text(
+                            '음성 분석',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                    ],
                     Expanded(
                       child: isGuardian
                           ? ElevatedButton(
@@ -668,6 +692,163 @@ class _PhotoDetailScreenState extends State<PhotoDetailScreen> {
     } catch (e) {
       print('❌ TTS 테스트 실패: $e');
       _showErrorSnackBar('TTS 테스트 실패: $e');
+    }
+  }
+  
+  Future<void> _startAudioAnalysis() async {
+    try {
+      print('🎵 오디오 분석 시작');
+      
+      // 현재 사진의 활성 세션 조회
+      final userId = Provider.of<UserProvider>(context, listen: false).id;
+      if (userId == null) {
+        _showErrorSnackBar('사용자 정보를 찾을 수 없습니다.');
+        return;
+      }
+      
+      final response = await SupabaseService.client
+          .from('sessions')
+          .select('id')
+          .eq('user_id', userId)
+          .contains('selected_photos', [widget.photoData['photo_id']])
+          .eq('status', 'completed')  // 완료된 세션만 분석 가능
+          .order('created_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+      
+      if (response == null) {
+        _showErrorSnackBar('완료된 세션을 찾을 수 없습니다. 먼저 대화를 완료해주세요.');
+        return;
+      }
+      
+      final sessionId = response['id'];
+      print('✅ 완료된 세션 발견: $sessionId');
+      
+      // JWT 토큰 가져오기
+      final session = SupabaseService.client.auth.currentSession;
+      if (session == null || session.accessToken.isEmpty) {
+        _showErrorSnackBar('로그인이 필요합니다.');
+        return;
+      }
+      
+      // 백그라운드 오디오 분석 시작
+      final baseUrl = dotenv.env['BASE_URL'];
+      if (baseUrl == null) {
+        _showErrorSnackBar('BASE_URL 환경변수가 설정되지 않았습니다.');
+        return;
+      }
+      
+      final apiResponse = await http.post(
+        Uri.parse('$baseUrl/api/audio-analysis/session/$sessionId/full-analysis-async?photo_id=${widget.photoData['photo_id']}&target_sr=16000&normalize=true&force_concat=false'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${session.accessToken}',
+        },
+      );
+      
+      if (apiResponse.statusCode == 200) {
+        final result = jsonDecode(apiResponse.body);
+        final taskId = result['task_id'];
+        print('✅ 오디오 분석 백그라운드 작업 시작됨: $taskId');
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('음성 분석이 백그라운드에서 시작되었습니다.\n작업 ID: $taskId'),
+              backgroundColor: Colors.blue,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+          
+          // 진행 상황을 모니터링하는 다이얼로그 표시 (선택사항)
+          _showAnalysisProgressDialog(taskId, baseUrl, session.accessToken);
+        }
+      } else {
+        print('❌ 오디오 분석 시작 실패: ${apiResponse.statusCode}');
+        print('응답: ${apiResponse.body}');
+        _showErrorSnackBar('오디오 분석 시작에 실패했습니다: ${apiResponse.statusCode}');
+      }
+    } catch (e) {
+      print('❌ 오디오 분석 실패: $e');
+      _showErrorSnackBar('오디오 분석 실패: $e');
+    }
+  }
+
+  // 진행 상황 모니터링 다이얼로그
+  void _showAnalysisProgressDialog(String taskId, String baseUrl, String token) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('음성 분석 진행 중'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text('작업 ID: $taskId'),
+            const SizedBox(height: 8),
+            const Text('분석이 완료될 때까지 잠시 기다려주세요...'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('백그라운드에서 실행'),
+          ),
+        ],
+      ),
+    );
+
+    // 주기적으로 상태 확인 (선택사항)
+    _pollAnalysisStatus(taskId, baseUrl, token);
+  }
+
+  // 분석 상태 폴링
+  void _pollAnalysisStatus(String taskId, String baseUrl, String token) async {
+    int attempts = 0;
+    const maxAttempts = 30; // 최대 5분 (10초 * 30)
+    
+    while (attempts < maxAttempts && mounted) {
+      try {
+        await Future.delayed(const Duration(seconds: 10));
+        
+        final response = await http.get(
+          Uri.parse('$baseUrl/api/audio-analysis/task/$taskId/status'),
+          headers: {'Authorization': 'Bearer $token'},
+        );
+        
+        if (response.statusCode == 200) {
+          final result = jsonDecode(response.body);
+          final status = result['status'];
+          
+          print('📊 분석 상태: $status, 진행률: ${result['progress']}%');
+          
+          if (status == 'completed') {
+            if (mounted) {
+              Navigator.of(context).pop(); // 진행 다이얼로그 닫기
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('🎉 음성 분석이 완료되었습니다!'),
+                  backgroundColor: Colors.green,
+                  duration: Duration(seconds: 3),
+                ),
+              );
+            }
+            break;
+          } else if (status == 'failed') {
+            if (mounted) {
+              Navigator.of(context).pop();
+              _showErrorSnackBar('음성 분석이 실패했습니다: ${result['error']}');
+            }
+            break;
+          }
+        }
+        attempts++;
+      } catch (e) {
+        print('상태 폴링 오류: $e');
+        break;
+      }
     }
   }
   
