@@ -112,7 +112,7 @@ class _HomeUpdateScreenState extends State<HomeUpdateScreen> {
         }
 
         // 최근 10개 사진만 표시
-        final recentPhotos = photoProvider.photos.take(10).toList();
+        final recentPhotos = photoProvider.photos.take(5).toList();
 
         return Column(
           children: recentPhotos.map<Widget>((photo) {

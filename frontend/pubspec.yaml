@@ -41,6 +41,7 @@ dependencies:
   provider: ^6.1.1               # ✅ 상태 관리
   uuid: ^4.5.1                   # ✅ UUID 생성
   web_socket_channel: ^3.0.1     # ✅ WebSocket 클라이언트
+  cached_network_image: ^3.3.1   # ✅ 이미지 캐싱
             # 🏷️ 상태 관리 패턴을 위한 Provider 패키지
 
   # The following adds the Cupertino Icons font to your application.

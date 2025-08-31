@@ -34,9 +34,21 @@ class PhotoProvider with ChangeNotifier {
     // 중복 호출 방지
     if (_isLoading && !forceRefresh) return;
 
+    // 디버깅 로그 추가
+    if (kDebugMode) {
+      print('🔍 [PhotoProvider] loadPhotos called with familyId: $familyId');
+      print('🔍 [PhotoProvider] _cachedFamilyId: $_cachedFamilyId');
+      print('🔍 [PhotoProvider] _isCacheValid: $_isCacheValid');
+      print('🔍 [PhotoProvider] hasData: $hasData');
+      print('🔍 [PhotoProvider] forceRefresh: $forceRefresh');
+    }
+
     // 캐시 유효 + 동일 가족 + 데이터 있으면 네트워크 호출 생략
     if (!forceRefresh && _isCacheValid && _cachedFamilyId == familyId && hasData) {
-      if (kDebugMode) print('📋 [PhotoProvider] Using cached photos (${_photos.length})');
+      if (kDebugMode) {
+        print('📋 [PhotoProvider] Using cached photos (${_photos.length})');
+        print('🔍 [PhotoProvider] isLoading: $_isLoading, hasData: $hasData');
+      }
       return;
     }
 

@@ -16,7 +16,7 @@ import '../widgets/assistant_bubble.dart'; // 챗봇 말풍선 위젯
 import '../widgets/photo_box.dart'; // 고정된 사진 영역 위젯
 import '../widgets/user_speech_bubble.dart'; // 사용자 음성 말풍선 위젯
 // import '../data/user_data.dart'; // 더 이상 사용하지 않음
-import '../user_provider.dart';
+import '../providers/user_provider.dart';
 import '../utils/routes.dart';
 import '../utils/styles.dart';
 import '../models/photo.dart';

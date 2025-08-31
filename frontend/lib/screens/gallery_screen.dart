@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import '../widgets/group_bar_widget.dart';
 import '../widgets/tap_widget.dart';
@@ -18,6 +20,10 @@ class GalleryScreen extends StatefulWidget {
 }
 
 class _GalleryScreenState extends State<GalleryScreen> {
+  // 그룹화 결과 캐싱
+  List<PhotoWithConv>? _lastPhotos;
+  List<MapEntry<String, List<PhotoWithConv>>>? _cachedGroupEntries;
+
   @override
   void initState() {
     super.initState();
@@ -25,6 +31,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   Future<void> _boot() async {
+    if (kDebugMode) print('🚀 [GalleryScreen] _boot() called');
     try {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
 
@@ -42,6 +49,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
       // ✅ PhotoProvider로 (캐시 고려) 로드
       final photoProvider = Provider.of<PhotoProvider>(context, listen: false);
+      if (kDebugMode) print('🚀 [GalleryScreen] Calling loadPhotos with familyId: ${userProvider.familyId}');
       await photoProvider.loadPhotos(userProvider.familyId!);
     } catch (e) {
       if (!mounted) return;
@@ -107,26 +115,41 @@ class _GalleryScreenState extends State<GalleryScreen> {
             );
           }
 
-          // ── 기존 그룹화/정렬 로직 그대로 유지 ──
-          final grouped = <String, List<PhotoWithConv>>{};
-          for (var pwc in photoProvider.photos) {
-            final key = '${pwc.year}년 ${_seasonKor(pwc.season)}';
-            grouped.putIfAbsent(key, () => []).add(pwc);
-          }
+          // ── 그룹화/정렬 로직 최적화 (캐싱) ──
+          List<MapEntry<String, List<PhotoWithConv>>> sortedGroupEntries;
+          
+          // 사진 목록이 같으면 캐시된 결과 사용
+          if (_lastPhotos != null && _cachedGroupEntries != null && 
+              _lastPhotos!.length == photoProvider.photos.length &&
+              _lastPhotos!.every((photo) => photoProvider.photos.contains(photo))) {
+            if (kDebugMode) print('📋 [GalleryScreen] Using cached group entries');
+            sortedGroupEntries = _cachedGroupEntries!;
+          } else {
+            if (kDebugMode) print('🔄 [GalleryScreen] Computing group entries');
+            final grouped = <String, List<PhotoWithConv>>{};
+            for (var pwc in photoProvider.photos) {
+              final key = '${pwc.year}년 ${_seasonKor(pwc.season)}';
+              grouped.putIfAbsent(key, () => []).add(pwc);
+            }
 
-          final sortedGroupEntries = grouped.entries.toList();
-          sortedGroupEntries.sort((a, b) {
-            final aYear = int.parse(a.key.split('년')[0]);
-            final aSeason = a.key.split('년 ')[1];
-            final bYear = int.parse(b.key.split('년')[0]);
-            final bSeason = b.key.split('년 ')[1];
-            if (aYear != bYear) return bYear.compareTo(aYear);
-            final order = {'겨울': 0, '가을': 1, '여름': 2, '봄': 3};
-            return (order[aSeason] ?? 4).compareTo(order[bSeason] ?? 4);
-          });
+            sortedGroupEntries = grouped.entries.toList();
+            sortedGroupEntries.sort((a, b) {
+              final aYear = int.parse(a.key.split('년')[0]);
+              final aSeason = a.key.split('년 ')[1];
+              final bYear = int.parse(b.key.split('년')[0]);
+              final bSeason = b.key.split('년 ')[1];
+              if (aYear != bYear) return bYear.compareTo(aYear);
+              final order = {'겨울': 0, '가을': 1, '여름': 2, '봄': 3};
+              return (order[aSeason] ?? 4).compareTo(order[bSeason] ?? 4);
+            });
 
-          for (var entry in sortedGroupEntries) {
-            entry.value.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+            for (var entry in sortedGroupEntries) {
+              entry.value.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+            }
+
+            // 캐시 저장
+            _lastPhotos = List.from(photoProvider.photos);
+            _cachedGroupEntries = sortedGroupEntries;
           }
 
           return RefreshIndicator(
@@ -168,10 +191,13 @@ class _GalleryScreenState extends State<GalleryScreen> {
                               children: [
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(10),
-                                  child: Image.network(
-                                    pwc.url,
+                                  child: CachedNetworkImage(
+                                    imageUrl: pwc.url,
                                     fit: BoxFit.cover,
-                                    errorBuilder: (c, e, s) =>
+                                    placeholder: (context, url) => const Center(
+                                      child: CircularProgressIndicator(),
+                                    ),
+                                    errorWidget: (context, url, error) => 
                                         const Icon(Icons.broken_image),
                                   ),
                                 ),
