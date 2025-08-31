@@ -210,7 +210,7 @@ class UserService {
       // 해당 세션의 CIST 대화 조회
       final conversations = await SupabaseService.client
           .from('conversations')
-          .select('id, session_id, cist_category, cist_score, is_cist_item, question_text, user_response_text')
+          .select('id, session_id, cist_category, cist_score, is_cist_item, ai_output, user_input')
           .eq('session_id', sessionId)
           .eq('is_cist_item', true)
           .filter('cist_category', 'in', '(registration,recall,naming,time_orientation)')
@@ -227,8 +227,8 @@ class UserService {
           categoryData[category] = {
             'category': _getCategoryDisplayName(category),
             'description': _getCategoryDescription(category),
-            'question': conversation['question_text'] ?? '',
-            'answer': conversation['user_response_text'] ?? '',
+            'question': conversation['ai_output'] ?? '',
+            'answer': conversation['user_input'] ?? '',
             'score': conversation['cist_score'] ?? 0,
             'isCorrect': (conversation['cist_score'] ?? 0) == 1,
           };

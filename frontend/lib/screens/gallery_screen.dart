@@ -7,7 +7,7 @@ import 'package:provider/provider.dart';
 import '../widgets/group_bar_widget.dart';
 import '../widgets/tap_widget.dart';
 import '../utils/styles.dart';
-import '../user_provider.dart';
+import '../providers/user_provider.dart';
 import '../utils/routes.dart';
 import '../models/photo.dart';
 import '../data/photo_api.dart';
@@ -116,7 +116,7 @@ Future<List<PhotoWithConv>> fetchPhotosWithConv(BuildContext context) async {
     }
     
     // Supabase에서 가족 사진 목록 조회 (대화 존재 여부 포함)
-    final familyPhotos = await PhotoApi.fetchRecentFamilyPhotoNewsWithConversations(familyId, limit: 1000);
+    final familyPhotos = await PhotoApi.fetchRecentFamilyPhotoNewsWithConversations(familyId, limit: 30);
     List<PhotoWithConv> result = [];
     
     for (var photoData in familyPhotos) {
