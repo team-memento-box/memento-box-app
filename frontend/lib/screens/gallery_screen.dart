@@ -34,6 +34,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
     if (kDebugMode) print('🚀 [GalleryScreen] _boot() called');
     try {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
+      final photoProvider = Provider.of<PhotoProvider>(context, listen: false);
 
       // User가 비어 있으면 Supabase에서 로드
       if (userProvider.id == null) {
@@ -47,9 +48,14 @@ class _GalleryScreenState extends State<GalleryScreen> {
         return;
       }
 
+      // 이미 데이터가 있고 캐시가 유효하면 로딩 건너뛰기
+      if (photoProvider.hasData && photoProvider.photos.isNotEmpty) {
+        if (kDebugMode) print('🚀 [GalleryScreen] Using existing data (${photoProvider.photos.length} photos), skipping load');
+        return;
+      }
+
       // ✅ PhotoProvider로 (캐시 고려) 로드
-      final photoProvider = Provider.of<PhotoProvider>(context, listen: false);
-      if (kDebugMode) print('🚀 [GalleryScreen] Calling loadPhotos with familyId: ${userProvider.familyId}');
+      if (kDebugMode) print('🚀 [GalleryScreen] Loading photos for familyId: ${userProvider.familyId}');
       await photoProvider.loadPhotos(userProvider.familyId!);
     } catch (e) {
       if (!mounted) return;

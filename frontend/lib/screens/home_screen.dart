@@ -19,20 +19,29 @@ class _HomeUpdateScreenState extends State<HomeUpdateScreen> {
   @override
   void initState() {
     super.initState();
+    print('🏠 [HomeScreen] initState called');
     _loadRecentNews();
   }
 
   Future<void> _loadRecentNews() async {
     try {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
+      final photoProvider = Provider.of<PhotoProvider>(context, listen: false);
+      
+      // 이미 데이터가 있고 캐시가 유효하면 로딩 건너뛰기
+      if (photoProvider.hasData && photoProvider.photos.isNotEmpty) {
+        print('🏠 [HomeScreen] Using existing data (${photoProvider.photos.length} photos), skipping load');
+        return;
+      }
+      
       final familyId = userProvider.familyId;
-
       if (familyId == null || familyId.isEmpty) {
+        print('🏠 [HomeScreen] No familyId, skipping load');
         return;
       }
 
+      print('🏠 [HomeScreen] Loading photos for familyId: $familyId');
       // PhotoProvider를 사용하여 캐시된 데이터 로드
-      final photoProvider = Provider.of<PhotoProvider>(context, listen: false);
       await photoProvider.loadPhotos(familyId);
     } catch (e) {
       print('❌ Error loading recent news: $e');
