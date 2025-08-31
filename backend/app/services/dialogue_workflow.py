@@ -1,16 +1,18 @@
-from typing import TypedDict, List, Dict, Any, Optional
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
-from langgraph.graph import StateGraph, END
 import os
-from supabase import create_client, Client
 import uuid
-from datetime import datetime
-from core.config import settings
-from langchain_core.prompts import ChatPromptTemplate
 import random
-from .dialogue_prompt import TIME_ORIENTATION_PROMPT
+from datetime import datetime
+from typing import TypedDict, List, Dict, Any, Optional
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import HumanMessage, SystemMessage
+from langgraph.graph import StateGraph, END
+from supabase import create_client, Client
 
+import sys
+sys.path.append('/app')
+from core.config import settings
+from services.dialogue_prompt import TIME_ORIENTATION_PROMPT, NAMING_PROMPT, ROUTER_PROMPT, STANDARD_PROMPT, AFTER_NAMING_PROMPT, LIGHT_STANDARD_PROMPT
 
 class WorkflowInput(TypedDict):
     """그래프 실행을 위해 외부에서 주입되는 초기 데이터"""
@@ -18,6 +20,7 @@ class WorkflowInput(TypedDict):
     user_id: str
     user_message: str
     photo_context: Dict[str, Any]
+    # conversation_history: Optional[List[Dict[str, str]]]  # 메모리 히스토리 지원
 
 class IntermediateState(TypedDict):
     """노드 간 결정에 사용되는 임시 데이터"""
@@ -41,6 +44,24 @@ class GraphState(TypedDict):
 
 class DialogueWorkflow:
     """LangGraph 기반 대화 워크플로우 시스템"""
+    
+    ### 임시 테스트용 사진 정보 상수 ### 
+    TEMP_PHOTO_INFO = {
+        "id": str(uuid.uuid4()),
+        "filename": "test_beach_photo.jpg",
+        "description": "사진 속에는 어린 소년이 해변에서 모래성을 쌓고 있습니다. 맑은 파란 바다가 배경에 펼쳐져 있고, 하얀 모래사장 위에는 작은 조개껍질들이 흩어져 있습니다. 소년은 빨간 티셔츠를 입고 있으며, 집중해서 모래성을 만들고 있는 모습입니다.",
+        "tags": ["해변", "모래성", "어린이", "바다", "여름휴가"],
+        "location_name": "부산 해운대 해수욕장",
+        "naming_objects": [
+            {"item": "모래성", "location": "소년 앞 바닥에", "context": "놀이 중심 아이템"},
+            {"item": "삽", "location": "손에 들고 있음", "context": "모래성을 쌓는 도구"},
+            {"item": "바다", "location": "배경", "context": "푸른 바다 풍경"},
+            {"item": "조개껍질", "location": "모래사장 곳곳", "context": "자연물"},
+            {"item": "빨간 티셔츠", "location": "소년이 입고 있음", "context": "의류"}
+        ],
+        "photo_year": 2000
+    }
+    ### 임시 테스트용 사진 정보 상수 ###
     
     def __init__(self):
         # 필수 환경 변수 검증 (settings 사용)
@@ -183,17 +204,32 @@ class DialogueWorkflow:
                     
                     if photo_response.data:
                         photo_info = photo_response.data
+                        ###  DB에서 로드된 사진에도 naming_objects 추가 (임시) ###
+                        if not photo_info.get("naming_objects"):
+                            photo_info["naming_objects"] = self.TEMP_PHOTO_INFO["naming_objects"]
+                            photo_info["photo_year"] = self.TEMP_PHOTO_INFO["photo_year"]
+                        ###  DB에서 로드된 사진에도 naming_objects 추가 (임시) ###
+
                         print(f"📷 사진 정보 로드됨: {photo_info}")
                 except Exception as photo_error:
                     print(f"❌ 사진 정보 로드 실패: {photo_error}")
             
+
+            ### 임시 테스트용 사진 정보 (실제 DB에서 조회 실패시 사용) ###
+            if not photo_info:
+                photo_info = self.TEMP_PHOTO_INFO.copy()  # 복사본 생성
+                photo_info["id"] = str(uuid.uuid4())  # 새 ID 생성
+                print(f"📷 임시 사진 정보 사용: {photo_info['filename']}")
+            ### 임시 테스트용 사진 정보 ###
+
+
             # conversation_id를 session_id로 사용 (main.py에서 이미 세션 생성됨)
             session_id = conversation_id
             print(f"✅ 세션 ID 설정: {session_id}")
             
             # 해당 세션의 기존 대화 내역 조회
             conversations_response = client.table("conversations").select(
-                "id, question_text, user_response_text, conversation_order"
+                "id, ai_output, user_input, conversation_order"
             ).eq("session_id", session_id).order("conversation_order").execute()
             
             print(f"💬 기존 대화 내역: {len(conversations_response.data) if conversations_response.data else 0}개")
@@ -208,16 +244,20 @@ class DialogueWorkflow:
             # 기존 대화 내용 추가
             if conversations_response.data:
                 for conv in conversations_response.data:
-                    if conv.get("question_text"):
+                    if conv.get("ai_output"):
                         message_history.append({
                             "role": "assistant", 
-                            "content": conv["question_text"]
+                            "content": conv["ai_output"]
                         })
-                    if conv.get("user_response_text"):
+                    if conv.get("user_input"):
                         message_history.append({
                             "role": "user", 
-                            "content": conv["user_response_text"]
+                            "content": conv["user_input"]
                         })
+            
+            # 현재 사용자 메시지를 히스토리에 추가
+            current_user_message = state["input_data"]["user_message"]
+            message_history.append({"role": "user", "content": current_user_message})
             
             state["message_history"] = message_history
             state["intermediate"] = {"cache_score": None, "routing_decision": ""}
@@ -253,15 +293,20 @@ class DialogueWorkflow:
             self.cist_results = []
         
         try:
-            if user_turns == 0:  # 1턴: 시간 지남력 (Rule-based)
+            if user_turns == 1:  # 1턴: 시간 지남력 (Rule-based)
+                print("🕐 1턴 - 시간지남력 질문 생성 시작")
                 current_date = datetime.now()
                 current_year = current_date.year
                 current_month = current_date.month
                 current_day = current_date.day
                 
-                # LLM 호출 없이 직접 질문 생성
-                time_question = f"기억 여행을 시작합니다. 출발점인 오늘은 {current_year}년 {current_month}월 며칠인가요?"
+                # TIME_ORIENTATION_PROMPT 사용하여 질문 생성
+                time_question = TIME_ORIENTATION_PROMPT.format(
+                    current_year=current_year,
+                    current_month=current_month
+                )
                 state["output"]["response_text"] = time_question
+                print(f"✅ 시간지남력 질문 생성 완료: {time_question}")
                 
                 # CIST 결과를 리스트에 추가
                 cist_item = {
@@ -272,21 +317,31 @@ class DialogueWorkflow:
                 }
                 self.cist_results.append(cist_item)
                 
-            elif user_turns == 1:  # 2턴: 이름대기
-                from .dialogue_prompt import NAMING_PROMPT
-                
+            elif user_turns == 2:  # 2턴: 이름대기
+                print("🎯 2턴 - 이름대기 질문 생성 시작")
+
+                ### photo_info가 없거나 naming_objects가 없으면 임시 데이터 사용 ### 
                 if not photo_info or not photo_info.get("naming_objects"):
-                    state["output"]["response_text"] = "사진 정보를 확인할 수 없어서 대화를 계속 진행하겠습니다."
-                    return state
+                    print("⚠️ photo_info 또는 naming_objects 없음, 임시 데이터 사용")
+                    photo_info = self.TEMP_PHOTO_INFO.copy()
+                    photo_info["id"] = str(uuid.uuid4())
+                ### photo_info가 없거나 naming_objects가 없으면 임시 데이터 사용 ### 
                 
                 # 사진에서 랜덤 객체 선택
                 naming_objects = photo_info.get("naming_objects", [])
+                print(f"🔍 naming_objects 개수: {len(naming_objects)}")
+                
+                if not naming_objects:
+                    raise ValueError("naming_objects가 비어있습니다. TEMP_PHOTO_INFO 확인 필요")
+                
                 selected_object = random.choice(naming_objects)
+                print(f"🎲 선택된 객체: {selected_object}")
                 
                 # 연도 계산
                 current_year = datetime.now().year
                 photo_year = int(photo_info.get("photo_year", current_year))
                 years_diff = current_year - photo_year
+                print(f"📅 사진 연도: {photo_year}, 현재: {current_year}, 차이: {years_diff}년")
                 
                 prompt_template = ChatPromptTemplate.from_template(NAMING_PROMPT)
                 chain = prompt_template | self.llm_mini
@@ -299,6 +354,7 @@ class DialogueWorkflow:
                 })
                 
                 state["output"]["response_text"] = response.content.strip()
+                print(f"✅ 이름대기 질문 생성 완료: {response.content.strip()}")
                 
                 # CIST 결과를 리스트에 추가
                 cist_item = {
@@ -311,6 +367,7 @@ class DialogueWorkflow:
                 
             else:
                 # 예외 상황: 3턴 이상에서는 orientation_naming에 들어오면 안됨
+                print(f"⚠️ 예외 상황: {user_turns}턴에서 orientation_naming_node 호출됨")
                 state["output"]["response_text"] = "죄송합니다. 처리 중 오류가 발생했습니다."
                 
             # CIST 결과 리스트 확인
@@ -319,7 +376,9 @@ class DialogueWorkflow:
                 print(f"   {i}. {result['cist_category']}: {result['expected_answer']}")
                 
         except Exception as e:
-            print(f"❌ orientation_naming_node 오류: {e}")
+            print(f"❌ orientation_naming_node 오류: {type(e).__name__}: {str(e)}")
+            import traceback
+            print(f"❌ 상세 오류:\n{traceback.format_exc()}")
             state["output"]["response_text"] = "죄송합니다. 처리 중 오류가 발생했습니다. 다시 말씀해 주시겠어요?"
         
         return state
@@ -329,24 +388,21 @@ class DialogueWorkflow:
         user_message = state["input_data"]["user_message"]
         message_history = state["message_history"]
         
-        routing_prompt = f"""
-        현재 대화 맥락을 분석하여 다음 중 하나를 선택하세요:
+        # 현재 턴수 계산
+        user_turns = sum(1 for msg in message_history if msg.get("role") == "user")
         
-        1. standard_chat: 일반적인 일상 대화 진행
-        2. assessment_chat: 인지기능 평가 질문 삽입
+        print(f"🎯 router_node: 현재 턴수 {user_turns}턴")
         
-        사용자 메시지: {user_message}
+        # 3턴의 경우 특수 규칙: 무조건 standard_chat
+        if user_turns == 3:  
+            print(f"   📌 3턴 특수 규칙: 무조건 standard_chat 선택")
+            state["intermediate"]["routing_decision"] = "standard_chat"
+            return state
         
-        다음 기준으로 판단하세요:
-        - 사용자가 기억력, 시간, 장소에 대해 언급하거나 혼란을 보이면 → assessment_chat
-        - 일반적인 사진 설명이나 일상 대화이면 → standard_chat
-        
-        응답은 반드시 'standard_chat' 또는 'assessment_chat' 중 하나만 답하세요.
-        """
-        
+        # 4턴 이후부터는 ROUTER_PROMPT 사용하여 일반적인 라우팅
         try:
             response = self.llm_mini.invoke([
-                SystemMessage(content=routing_prompt),
+                SystemMessage(content=ROUTER_PROMPT),
                 HumanMessage(content=user_message)
             ])
             
@@ -354,51 +410,77 @@ class DialogueWorkflow:
             if routing_decision not in ["standard_chat", "assessment_chat"]:
                 routing_decision = "standard_chat"  # 기본값
                 
+            print(f"   🛤️ LLM 라우팅 결정: {routing_decision}")
             state["intermediate"]["routing_decision"] = routing_decision
             
         except Exception as e:
-            print(f"Router decision failed: {e}")
+            print(f"❌ Router decision failed: {e}")
             state["intermediate"]["routing_decision"] = "standard_chat"
         
         return state
     
     def standard_response_node(self, state: GraphState) -> GraphState:
-        """일반 응답 생성 노드: 자연스러운 일상 대화"""
+        """일반 응답 생성 노드: 턴수에 따라 다른 프롬프트 사용"""
         user_message = state["input_data"]["user_message"]
         photo_context = state["input_data"]["photo_context"]
         photo_info = state.get("photo_info", {})
+        message_history = state["message_history"]
         
-        # 사진 정보 포함한 컨텍스트 구성
-        photo_description = ""
-        if photo_info:
-            photo_description = f"사진 정보: {photo_info.get('description', '')}, 위치: {photo_info.get('location_name', '')}, 태그: {', '.join(photo_info.get('tags', []))}"
+        # 현재 턴수 계산
+        user_turns = sum(1 for msg in message_history if msg.get("role") == "user")
         
-        conversation_prompt = f"""
-        사용자와 자연스럽고 따뜻한 대화를 나누세요.
+        print(f"💬 standard_response_node: 현재 턴수 {user_turns}턴")
         
-        사용자 메시지: {user_message}
-        {photo_description}
-        
-        응답 원칙:
-        1. 50자 이내로 간결하게 답변
-        2. 따뜻하고 공감적인 어조
-        3. 사진과 관련된 내용이면 구체적으로 언급
-        4. 추가 질문으로 대화 이어가기
-        
-        한 번에 하나의 질문만 해주세요.
-        """
-        
-        try:
-            response = self.llm_mini.invoke([
-                SystemMessage(content=conversation_prompt),
-                HumanMessage(content=user_message)
-            ])
+        # 3턴인 경우 AFTER_NAMING_PROMPT 사용
+        if user_turns == 3:  
+            print(f"   📝 3턴 전용 AFTER_NAMING_PROMPT 사용")
             
-            state["output"]["response_text"] = response.content.strip()
+            try:
+                # photo_info에서 메타데이터 구성
+                photo_metadata = {
+                    "description": photo_info.get("description", ""),
+                    "naming_objects": photo_info.get("naming_objects", [])
+                }
+                
+                prompt_template = ChatPromptTemplate.from_template(AFTER_NAMING_PROMPT)
+                chain = prompt_template | self.llm_mini
+                
+                response = chain.invoke({
+                    "user_message": user_message,
+                    "photo_metadata": photo_metadata,
+                    "message_history": message_history
+                })
+                
+                state["output"]["response_text"] = response.content.strip()
+                
+            except Exception as e:
+                print(f"❌ AFTER_NAMING_PROMPT 처리 실패: {e}")
+                state["output"]["response_text"] = "정말 좋네요! 이 사진에 대해 더 이야기해볼까요?"
+        
+        # 4턴 이후는 STANDARD_PROMPT 사용
+        else:
+            print(f"📝 일상 대화용 STANDARD_PROMPT 사용")
             
-        except Exception as e:
-            print(f"Standard response generation failed: {e}")
-            state["output"]["response_text"] = "죄송합니다. 다시 말씀해 주시겠어요?"
+            try:
+                # 사진 정보 포함한 컨텍스트 구성
+                photo_description = ""
+                if photo_info:
+                    photo_description = f"사진 정보: {photo_info.get('description', '')}, 위치: {photo_info.get('location_name', '')}, 태그: {', '.join(photo_info.get('tags', []))}"
+                
+                prompt_template = ChatPromptTemplate.from_template(STANDARD_PROMPT)
+                chain = prompt_template | self.llm_mini
+                
+                response = chain.invoke({
+                    "user_message": user_message,
+                    "photo_description": photo_description,
+                    "message_history": message_history
+                })
+                
+                state["output"]["response_text"] = response.content.strip()
+                
+            except Exception as e:
+                print(f"❌ STANDARD_PROMPT 처리 실패: {e}")
+                state["output"]["response_text"] = "그렇군요. 더 자세히 이야기해 주실 수 있나요?"
         
         return state
     
@@ -492,11 +574,18 @@ class DialogueWorkflow:
         """대화 1~2턴 반드시 orientation_naming 진입"""
         message_history = state.get("message_history", [])
         
-        # user 메시지 개수로 턴수 계산 (user-assistant 1쌍 = 1턴)
+        # user 메시지 개수로 턴수 계산 (현재 메시지 포함)
         user_turns = sum(1 for msg in message_history if msg.get("role") == "user")
         
-        # 1-2턴에서만 orientation_naming으로 진입
-        return "orientation_naming" if user_turns < 2 else "router"
+        print(f"🔍 현재 턴수: {user_turns}턴")
+        
+        # 1-2턴에서만 orientation_naming으로 진입 (현재 메시지 포함하여 계산)
+        if user_turns <= 2:
+            print(f"   ➡️ orientation_naming 노드로 진입")
+            return "orientation_naming"
+        else:
+            print(f"   ➡️ router 노드로 진입")
+            return "router"
     
     
     def _cache_decision(self, state: GraphState) -> str:
@@ -532,15 +621,15 @@ class DialogueWorkflow:
             next_order = len(count_response.data) + 1 if count_response.data else 1
             print(f"📊 대화 순서: {next_order}")
             
-            # 대화 레코드 생성 (단순화)
+            # 대화 레코드 생성 (실제 DB 스키마에 맞게)
             conversation_data = {
                 "session_id": session_id,
                 "user_id": user_id,
                 "photo_id": photo_context.get("photo_id"),
                 "conversation_order": next_order,
-                "question_text": ai_response,
+                "ai_output": ai_response,
                 "question_type": "open_ended",  # 기본값
-                "user_response_text": user_message,
+                "user_input": user_message,
                 "is_cist_item": False  # 기본값
             }
             
