@@ -7,6 +7,12 @@ from supabase import create_client, Client
 import uuid
 from datetime import datetime
 from core.config import settings
+from .dialogue_prompt import (
+    ROUTER_PROMPT,
+    STANDARD_RESPONSE_PROMPT,
+    FALLBACK_PROMPT,
+    CACHE_RETRIEVE_AND_EVALUATE_PROMPT
+)
 
 class WorkflowInput(TypedDict):
     """그래프 실행을 위해 외부에서 주입되는 초기 데이터"""
@@ -228,25 +234,13 @@ class DialogueWorkflow:
         user_message = state["input_data"]["user_message"]
         message_history = state["message_history"]
         
-        routing_prompt = f"""
-        현재 대화 맥락을 분석하여 다음 중 하나를 선택하세요:
-        
-        1. standard_chat: 일반적인 일상 대화 진행
-        2. assessment_chat: 인지기능 평가 질문 삽입
-        
-        사용자 메시지: {user_message}
-        
-        다음 기준으로 판단하세요:
-        - 사용자가 기억력, 시간, 장소에 대해 언급하거나 혼란을 보이면 → assessment_chat
-        - 일반적인 사진 설명이나 일상 대화이면 → standard_chat
-        
-        응답은 반드시 'standard_chat' 또는 'assessment_chat' 중 하나만 답하세요.
-        """
+        # dialogue_prompt.py의 ROUTER_PROMPT 사용
+        routing_prompt = ROUTER_PROMPT
         
         try:
             response = self.llm_mini.invoke([
                 SystemMessage(content=routing_prompt),
-                HumanMessage(content=user_message)
+                HumanMessage(content=f"사용자 메시지: {user_message}\n대화 히스토리: {message_history}")
             ])
             
             routing_decision = response.content.strip().lower()
@@ -266,6 +260,7 @@ class DialogueWorkflow:
         user_message = state["input_data"]["user_message"]
         photo_context = state["input_data"]["photo_context"]
         photo_info = state.get("photo_info", {})
+        message_history = state.get("message_history", [])
         
         # 사진 정보 포함한 컨텍스트 구성
         photo_description = ""
@@ -295,20 +290,12 @@ class DialogueWorkflow:
             else:
                 photo_description = basic_info
         
-        conversation_prompt = f"""
-        사용자와 자연스럽고 따뜻한 대화를 나누세요.
-        
-        사용자 메시지: {user_message}
-        {photo_description}
-        
-        응답 원칙:
-        1. 50자 이내로 간결하게 답변
-        2. 따뜻하고 공감적인 어조
-        3. 사진과 관련된 내용이면 구체적으로 언급
-        4. 추가 질문으로 대화 이어가기
-        
-        한 번에 하나의 질문만 해주세요.
-        """
+        # dialogue_prompt.py의 STANDARD_RESPONSE_PROMPT 사용 (템플릿 변수 적용)
+        conversation_prompt = STANDARD_RESPONSE_PROMPT.format(
+            photo_description=photo_description,
+            user_message=user_message,
+            message_history=message_history
+        )
         
         try:
             response = self.llm_mini.invoke([
@@ -327,6 +314,7 @@ class DialogueWorkflow:
     def cache_retrieve_and_evaluate_node(self, state: GraphState) -> GraphState:
         """캐시 검색 및 평가 노드: 인지기능 평가 질문 검색"""
         user_message = state["input_data"]["user_message"]
+        message_history = state.get("message_history", [])
         
         try:
             # Supabase에서 CIST 질문 템플릿 검색
@@ -335,6 +323,10 @@ class DialogueWorkflow:
             ).limit(5).execute()
             
             if response.data:
+                # dialogue_prompt.py의 CACHE_RETRIEVE_AND_EVALUATE_PROMPT 사용
+                # 실제 구현시에는 이 프롬프트를 사용하여 가장 적합한 질문 선택
+                evaluate_prompt = CACHE_RETRIEVE_AND_EVALUATE_PROMPT
+                
                 # 간단한 유사도 평가 (실제로는 벡터 DB 사용 권장)
                 best_question = response.data[0]
                 cache_score = 0.9  # 임시 점수
@@ -356,9 +348,10 @@ class DialogueWorkflow:
         conversation_id = state["input_data"]["conversation_id"]
         photo_context = state["input_data"]["photo_context"]
         photo_info = state.get("photo_info", {})
+        message_history = state.get("message_history", [])
         
         # 사진 분석 결과 요약 (fallback용 간단 버전)
-        photo_context_text = ""
+        photo_metadata = ""
         if photo_info:
             analyze_result = photo_info.get('photo_analyze_result')
             if analyze_result:
@@ -369,20 +362,18 @@ class DialogueWorkflow:
                     context_parts.append(f"분위기: {analyze_result['mood']}")
                 
                 if context_parts:
-                    photo_context_text = f"\n참고: {', '.join(context_parts)}"
+                    photo_metadata = f"참고: {', '.join(context_parts)}"
         
-        fallback_prompt = f"""
-        간단하고 따뜻한 응답을 생성하세요.
-        
-        사용자 메시지: {user_message}{photo_context_text}
-        
-        30자 이내로 공감하며 답변해주세요.
-        """
+        # dialogue_prompt.py의 FALLBACK_PROMPT 사용
+        fallback_prompt = FALLBACK_PROMPT
         
         try:
+            # 프롬프트에 컨텍스트 정보 포함
+            context_info = f"사용자 메시지: {user_message}\n사진 메타데이터: {photo_metadata}\n최근 대화: {message_history[-2:] if message_history else []}"
+            
             response = self.llm_nano.invoke([
                 SystemMessage(content=fallback_prompt),
-                HumanMessage(content=user_message)
+                HumanMessage(content=context_info)
             ])
             
             state["output"]["response_text"] = response.content.strip()
