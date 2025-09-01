@@ -42,10 +42,10 @@ class VoiceSystem:
             # Google Speech API 요청 설정 - 여러 포맷 시도
             audio = speech.RecognitionAudio(content=audio_content)
             
-            # 첫 번째 시도: AAC 포맷
+            # 첫 번째 시도: M4A 포맷 (Flutter가 실제로 생성하는 포맷)
             try:
                 config = speech.RecognitionConfig(
-                    encoding=speech.RecognitionConfig.AudioEncoding.MP3,  # AAC/M4A 포맷
+                    encoding=speech.RecognitionConfig.AudioEncoding.M4A,  # M4A 포맷 (AAC 컨테이너)
                     sample_rate_hertz=16000,
                     language_code="ko-KR",
                     alternative_language_codes=["en-US"],
@@ -53,7 +53,7 @@ class VoiceSystem:
                     use_enhanced=True,
                     model="latest_long",
                 )
-                print("🎤 AAC 포맷으로 STT 시도")
+                print("🎤 M4A 포맷으로 STT 시도")
                 response = self.google_client.recognize(config=config, audio=audio)
             except Exception as e:
                 print(f"⚠️ AAC 포맷 실패, WEBM_OPUS로 재시도: {e}")
@@ -83,9 +83,6 @@ class VoiceSystem:
                     )
                     print("🎤 포맷 자동 감지로 STT 최종 시도")
                     response = self.google_client.recognize(config=config, audio=audio)
-            
-            # STT 실행
-            response = self.google_client.recognize(config=config, audio=audio)
             
             if response.results:
                 # 가장 신뢰도 높은 결과 선택
