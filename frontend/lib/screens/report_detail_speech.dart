@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import '../services/dementia_analysis_service.dart';
+import '../models/report.dart';
+import '../widgets/tap_widget.dart';
+import '../widgets/group_bar_widget.dart';
+import '../data/report_api.dart';
 
 // Constants
 class AppColors {
@@ -55,51 +59,308 @@ class AppTextStyles {
 }
 
 // Main Screen
-class ConversationHealthAnalysisScreen extends StatelessWidget {
-  final HealthAnalysisData data;
+class ConversationHealthAnalysisScreen extends StatefulWidget {
+  final HealthAnalysisData? initialData;
+  final Report? reportData;
+  final String? sessionId;
 
   const ConversationHealthAnalysisScreen({
-    Key? key,
-    HealthAnalysisData? data,
-  }) : data = data ?? const HealthAnalysisData(
-         totalSegments: 20,
-         dementiaSegmentsCount: 8,
-         dementiaRatio: 0.4,
-         aiVoiceScore: 66,
-         speechContentScore: 65,
-         userName: "서봉봉",
-         ageGroup: "60대",
-         ageGroupAverageRatio: 0.3,
-       ), super(key: key);
+    super.key,
+    this.initialData,
+    this.reportData,
+    this.sessionId,
+  });
+
+  @override
+  State<ConversationHealthAnalysisScreen> createState() => _ConversationHealthAnalysisScreenState();
+}
+
+class _ConversationHealthAnalysisScreenState extends State<ConversationHealthAnalysisScreen> {
+  HealthAnalysisData? data;
+  ReportTextAnalysisData? textAnalysisData;
+  bool isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    data = widget.initialData ?? const HealthAnalysisData(
+      totalSegments: 20,
+      dementiaSegmentsCount: 8,
+      dementiaRatio: 0.4,
+      aiVoiceScore: 66,
+      speechContentScore: 65,
+      userName: "서봉봉",
+      ageGroup: "60대",
+      ageGroupAverageRatio: 0.3,
+    );
+    _loadTextAnalysisData();
+  }
+
+  Future<void> _loadTextAnalysisData() async {
+    if (widget.sessionId != null || widget.reportData?.sessionId != null) {
+      setState(() => isLoading = true);
+      try {
+        final sessionId = widget.sessionId ?? widget.reportData!.sessionId;
+        final analysisData = await ReportTextAnalysisApi.fetchTextAnalysisData(sessionId);
+        setState(() {
+          textAnalysisData = analysisData;
+          isLoading = false;
+        });
+      } catch (e) {
+        print('❌ Error loading text analysis data: $e');
+        setState(() => isLoading = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (data == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    
+    final screenSize = MediaQuery.of(context).size;
+    final screenWidth = screenSize.width;
+    final screenHeight = screenSize.height;
+
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
+      backgroundColor: const Color(0xFFF7F7F7),
+      appBar: GroupBar(title: '대화 건강 지수 상세 페이지'),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.symmetric(
+          horizontal: screenWidth * 0.05,
+          vertical: screenHeight * 0.02,
+        ),
         child: Column(
           children: [
-            _Header(data: data),
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    const SizedBox(height: 20),
-                    _SummaryCards(data: data),
-                    const SizedBox(height: 20),
-                    _AIVoiceAnalysisCard(data: data),
-                    const SizedBox(height: 20),
-                    _LanguageAnalysisCard(data: data),
-                    const SizedBox(height: 20),
-                  ],
-                ),
+            // 날짜 정보
+            Text(
+              widget.reportData?.formattedDate ?? '2025-05-26 13:56',
+              style: TextStyle(
+                color: const Color(0xFF777777),
+                fontSize: screenWidth * 0.032,
+                fontFamily: 'Pretendard',
+                fontWeight: FontWeight.w600,
               ),
             ),
+            SizedBox(height: screenHeight * 0.02),
+            
+            // 요약 카드들
+            _DetailSpeechSummary(screenWidth, data!),
+            SizedBox(height: screenHeight * 0.03),
+            
+            // AI 음성 분석 카드
+            _AIVoiceAnalysisCard(data: data!, screenWidth: screenWidth, screenHeight: screenHeight),
+            SizedBox(height: screenHeight * 0.03),
+            
+            // 발화 언어 분석 카드
+            _SpeechAnalysisCard(
+              screenWidth: screenWidth,
+              screenHeight: screenHeight,
+              data: data!,
+              textAnalysisData: textAnalysisData,
+            ),
+            
+            SizedBox(height: screenHeight * 0.1),
           ],
         ),
       ),
+      bottomNavigationBar: const CustomBottomNavBar(currentIndex: 3),
     );
   }
+}
+
+// Detail Speech Summary Component
+Widget _DetailSpeechSummary(double screenWidth, HealthAnalysisData data) {
+  return Container(
+    width: 265.83,
+    height: 209,
+    child: Stack(
+      children: [
+        // AI 음성 분석 요약 카드
+        Positioned(
+          left: 0,
+          top: 0,
+          child: Container(
+            width: 127.83,
+            height: 179,
+            decoration: ShapeDecoration(
+              color: const Color(0xFF7CD0A0),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(13),
+              ),
+              shadows: [
+                BoxShadow(
+                  color: Color(0x19000000),
+                  blurRadius: 5,
+                  offset: Offset(0, 2),
+                  spreadRadius: 0,
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Text(
+                    'AI 음성 분석 요약',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const Spacer(),
+                  Container(
+                    width: 51,
+                    height: 51,
+                    decoration: BoxDecoration(
+                      image: DecorationImage(
+                        image: NetworkImage("https://placehold.co/51x51"),
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: '${data.userName}님, 이번 대화에서\n',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontFamily: 'Pretendard',
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        TextSpan(
+                          text: '${data.ageGroup} 평균보다\n',
+                          style: TextStyle(
+                            color: const Color(0xFF777777),
+                            fontSize: 11,
+                            fontFamily: 'Pretendard',
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        TextSpan(
+                          text: data.comparisonText,
+                          style: TextStyle(
+                            color: const Color(0xFFF45C5C),
+                            fontSize: 11,
+                            fontFamily: 'Pretendard',
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        
+        // 발화 언어 분석 요약 카드
+        Positioned(
+          left: 138,
+          top: 0,
+          child: Container(
+            width: 127.83,
+            height: 179,
+            decoration: ShapeDecoration(
+              color: const Color(0xFF7CD0A0),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(13),
+              ),
+              shadows: [
+                BoxShadow(
+                  color: Color(0x19000000),
+                  blurRadius: 5,
+                  offset: Offset(0, 2),
+                  spreadRadius: 0,
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Text(
+                    '발화 언어 분석 요약',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const Spacer(),
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      image: DecorationImage(
+                        image: NetworkImage("https://placehold.co/56x56"),
+                        fit: BoxFit.contain,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Color(0x19000000),
+                          blurRadius: 4,
+                          offset: Offset(0, 2),
+                          spreadRadius: 0,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Spacer(),
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: '${data.userName}님, 이번 대화에서\n',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontFamily: 'Pretendard',
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        TextSpan(
+                          text: '${data.ageGroup} 평균보다\n',
+                          style: TextStyle(
+                            color: const Color(0xFF777777),
+                            fontSize: 11,
+                            fontFamily: 'Pretendard',
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        TextSpan(
+                          text: data.comparisonText,
+                          style: TextStyle(
+                            color: const Color(0xFFF45C5C),
+                            fontSize: 11,
+                            fontFamily: 'Pretendard',
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 // Header Component
@@ -280,8 +541,14 @@ class _SummaryCard extends StatelessWidget {
 // AI Voice Analysis Card Component
 class _AIVoiceAnalysisCard extends StatelessWidget {
   final HealthAnalysisData data;
+  final double screenWidth;
+  final double screenHeight;
 
-  const _AIVoiceAnalysisCard({required this.data});
+  const _AIVoiceAnalysisCard({
+    required this.data,
+    required this.screenWidth,
+    required this.screenHeight,
+  });
 
   @override
   Widget build(BuildContext context) {
