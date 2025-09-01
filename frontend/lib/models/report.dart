@@ -1,3 +1,6 @@
+import 'dart:ffi';
+import 'dart:typed_data';
+
 import 'photo.dart';
 
 class SessionData {
@@ -30,11 +33,17 @@ class SessionData {
       selectedPhotos: List<String>.from(json['selected_photos'] ?? []),
       totalDurationSeconds: json['total_duration_seconds'] ?? 0,
       cistScore: json['cist_score'],
-      startedAt: json['started_at'] != null ? DateTime.parse(json['started_at']) : null,
-      completedAt: json['completed_at'] != null ? DateTime.parse(json['completed_at']) : null,
+      startedAt: json['started_at'] != null
+          ? DateTime.parse(json['started_at'])
+          : null,
+      completedAt: json['completed_at'] != null
+          ? DateTime.parse(json['completed_at'])
+          : null,
       notes: json['notes'],
-      conversations: json['conversations'] != null 
-          ? (json['conversations'] as List).map((e) => ConversationData.fromJson(e)).toList()
+      conversations: json['conversations'] != null
+          ? (json['conversations'] as List)
+                .map((e) => ConversationData.fromJson(e))
+                .toList()
           : null,
     );
   }
@@ -141,11 +150,16 @@ class Report {
       recommendations: List<String>.from(json['recommendations'] ?? []),
       reportGeneratedAt: DateTime.parse(json['report_generated_at']),
       isShared: json['is_shared'] ?? false,
-      sharedAt: json['shared_at'] != null ? DateTime.parse(json['shared_at']) : null,
+      sharedAt: json['shared_at'] != null
+          ? DateTime.parse(json['shared_at'])
+          : null,
       createdAt: DateTime.parse(json['created_at']),
-      session: json['sessions'] != null ? SessionData.fromJson(json['sessions']) : null,
+      session: json['sessions'] != null
+          ? SessionData.fromJson(json['sessions'])
+          : null,
       userName: json['users'] != null ? json['users']['full_name'] : null,
-      userBirthDate: json['users'] != null && json['users']['birth_date'] != null
+      userBirthDate:
+          json['users'] != null && json['users']['birth_date'] != null
           ? DateTime.parse(json['users']['birth_date'])
           : null,
     );
@@ -201,16 +215,17 @@ class Report {
   // 연령대 계산 (10의 자리대로 끼어서)
   String get ageGroup {
     if (userBirthDate == null) return '연령 미상';
-    
+
     final now = DateTime.now();
     final age = now.year - userBirthDate!.year;
-    
+
     // 생일이 지나지 않았으면 나이에서 1을 뺀
-    final adjustedAge = now.month < userBirthDate!.month ||
+    final adjustedAge =
+        now.month < userBirthDate!.month ||
             (now.month == userBirthDate!.month && now.day < userBirthDate!.day)
         ? age - 1
         : age;
-    
+
     final ageGroupNumber = (adjustedAge ~/ 10) * 10;
     return '$ageGroupNumber대';
   }
@@ -219,5 +234,70 @@ class Report {
   String get userDisplayName {
     if (userName == null || userName!.isEmpty) return '사용자';
     return userName!.endsWith('님') ? userName! : '${userName!}님';
+  }
+}
+
+class ReportTextAnalysisData {
+  final String id;
+  final String sessionId;
+  final String userId;
+
+  final double lexicalDiversity;
+  final double mlu;
+  final double demonstrativeRatio;
+  final double speechRate;
+
+  final double? avgLexicalDiversity;
+  final double? avgMlu;
+  final double? avgDemonstrativeRatio;
+  final double? avgSpeechRate;
+
+  final double? maxMlu;
+  final double? minMlu;
+  final double? maxSpeechRate;
+  final double? minSpeechRate;
+
+  ReportTextAnalysisData({
+    required this.id,
+    required this.sessionId,
+    required this.userId,
+
+    required this.lexicalDiversity,
+    required this.mlu,
+    required this.demonstrativeRatio,
+    required this.speechRate,
+
+    this.avgLexicalDiversity,
+    this.avgMlu,
+    this.avgDemonstrativeRatio,
+    this.avgSpeechRate,
+
+    this.maxMlu,
+    this.minMlu,
+    this.maxSpeechRate,
+    this.minSpeechRate,
+  });
+
+  factory ReportTextAnalysisData.fromJson(Map<String, dynamic> json) {
+    return ReportTextAnalysisData(
+      id: json['id'],
+      sessionId: json['session_id'],
+      userId: json['user_id'],
+      lexicalDiversity: json['lexical_diversity'] ?? 0.0,
+      mlu: json['mlu'] ?? 0.0,
+      demonstrativeRatio: json['demonstrative_ratio'] ?? 0.0,
+      speechRate: json['speech_rate'] ?? 0.0,
+      // avgLexicalDiversity: json['avg_lexical_diversity'] ?? 0.0,
+      // avgMlu: List<String>.from(json['recommendations'] ?? []),
+      // avgDemonstrativeRatio: DateTime.parse(json['report_generated_at']),
+      // avgSpeechRate: json['is_shared'] ?? false,
+      // maxMlu: json['shared_at'] != null ? DateTime.parse(json['shared_at']) : null,
+      // minMlu: DateTime.parse(json['created_at']),
+      // maxSpeechRate: json['sessions'] != null ? SessionData.fromJson(json['sessions']) : null,
+      // minSpeechRate: json['users'] != null ? json['users']['full_name'] : null,
+      // userBirthDate: json['users'] != null && json['users']['birth_date'] != null
+      //     ? DateTime.parse(json['users']['birth_date'])
+      //     : null,
+    );
   }
 }
