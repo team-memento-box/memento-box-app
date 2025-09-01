@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     libc6 \
     libgcc1 \
     libstdc++6 \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # requirements.txt 방식으로 변경

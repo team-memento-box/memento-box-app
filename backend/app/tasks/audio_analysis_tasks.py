@@ -173,7 +173,12 @@ async def process_audio_concat_async(
     import soundfile as sf
     
     # URL 목록 획득
+    print(f"🔍 세션 ID로 오디오 URL 조회 시작: {session_id}")
     ordered = await _fetch_ordered_audio_urls_from_db(session_id, supabase_admin)
+    print(f"📊 조회된 오디오 URL 개수: {len(ordered) if ordered else 0}")
+    if ordered:
+        for i, (order, url) in enumerate(ordered):
+            print(f"  - URL {i+1}: order={order}, url={url[:100]}{'...' if len(url) > 100 else ''}")
     if not ordered:
         raise Exception("해당 세션의 오디오 파일이 없습니다.")
 
