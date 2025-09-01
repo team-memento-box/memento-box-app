@@ -19,7 +19,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.8.0
+  sdk: ^3.5.0
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -49,7 +49,7 @@ dependencies:
   image_picker: ^0.8.9              # 이미지 선택
   # record: ^4.4.4                    # 오디오 녹음 - 임시 비활성화
   permission_handler: ^12.0.1       # 권한 관리 - 최신 버전으로 업데이트
-  just_audio: ^0.10.4               # 오디오 재생 - 최신 버전으로 업데이트
+  just_audio: ^0.9.46               # 오디오 재생 - SDK 호환성을 위해 버전 다운그레이드
   shared_preferences: ^2.2.2        # 로컬 저장소
 
 dev_dependencies:
