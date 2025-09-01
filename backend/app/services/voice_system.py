@@ -38,27 +38,45 @@ class VoiceSystem:
             
             # base64 디코딩
             audio_content = base64.b64decode(audio_base64)
+            print(f"📊 디코딩된 오디오 크기: {len(audio_content)} bytes")
             
-            # Google Speech API 요청 설정 - 여러 포맷 시도
+            # Google Speech API 요청 설정
             audio = speech.RecognitionAudio(content=audio_content)
             
-            # 첫 번째 시도: M4A 포맷 (Flutter가 실제로 생성하는 포맷)
+            # Flutter M4A는 실제로 AAC 코덱을 사용하므로 포맷 자동 감지가 가장 효과적
+            # 첫 번째 시도: 포맷 자동 감지 (가장 안정적)
             try:
                 config = speech.RecognitionConfig(
-                    encoding=speech.RecognitionConfig.AudioEncoding.M4A,  # M4A 포맷 (AAC 컨테이너)
-                    sample_rate_hertz=16000,
+                    # encoding을 지정하지 않으면 자동 감지 - M4A/AAC 포맷에 가장 효과적
                     language_code="ko-KR",
                     alternative_language_codes=["en-US"],
                     enable_automatic_punctuation=True,
                     use_enhanced=True,
                     model="latest_long",
+                    # 오디오 채널 수 명시 (Flutter는 일반적으로 모노)
+                    audio_channel_count=1,
+                    enable_word_time_offsets=False,  # 성능 최적화
                 )
-                print("🎤 M4A 포맷으로 STT 시도")
+                print("🎤 포맷 자동 감지로 STT 시도 (M4A/AAC 지원)")
                 response = self.google_client.recognize(config=config, audio=audio)
             except Exception as e:
-                print(f"⚠️ AAC 포맷 실패, WEBM_OPUS로 재시도: {e}")
-                # 두 번째 시도: WEBM_OPUS 포맷
+                print(f"⚠️ 자동 감지 실패, MP3로 재시도: {str(e)}")
+                # 두 번째 시도: MP3 포맷 (M4A와 유사한 압축 포맷)
                 try:
+                    config = speech.RecognitionConfig(
+                        encoding=speech.RecognitionConfig.AudioEncoding.MP3,
+                        sample_rate_hertz=44100,  # Flutter 기본 샘플레이트
+                        language_code="ko-KR",
+                        alternative_language_codes=["en-US"],
+                        enable_automatic_punctuation=True,
+                        use_enhanced=True,
+                        model="latest_long",
+                    )
+                    print("🎤 MP3 포맷으로 STT 재시도")
+                    response = self.google_client.recognize(config=config, audio=audio)
+                except Exception as e2:
+                    print(f"⚠️ MP3도 실패, WEBM_OPUS로 최종 시도: {str(e2)}")
+                    # 세 번째 시도: WEBM_OPUS
                     config = speech.RecognitionConfig(
                         encoding=speech.RecognitionConfig.AudioEncoding.WEBM_OPUS,
                         sample_rate_hertz=48000,
@@ -68,20 +86,7 @@ class VoiceSystem:
                         use_enhanced=True,
                         model="latest_long",
                     )
-                    print("🎤 WEBM_OPUS 포맷으로 STT 재시도")
-                    response = self.google_client.recognize(config=config, audio=audio)
-                except Exception as e2:
-                    print(f"⚠️ WEBM_OPUS 포맷도 실패, 포맷 자동 감지로 최종 시도: {e2}")
-                    # 세 번째 시도: 포맷 자동 감지
-                    config = speech.RecognitionConfig(
-                        # encoding을 지정하지 않으면 자동 감지
-                        language_code="ko-KR",
-                        alternative_language_codes=["en-US"],
-                        enable_automatic_punctuation=True,
-                        use_enhanced=True,
-                        model="latest_long",
-                    )
-                    print("🎤 포맷 자동 감지로 STT 최종 시도")
+                    print("🎤 WEBM_OPUS 포맷으로 STT 최종 시도")
                     response = self.google_client.recognize(config=config, audio=audio)
             
             if response.results:

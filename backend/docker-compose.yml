@@ -11,6 +11,7 @@ services:
             - ./.env:/app/.env
             - ./uploads:/app/uploads
             - ./app/alembic/versions:/app/alembic/versions
+            - ./aesthetic-rush-470706-k8-dc764c5ba38e.json:/app/aesthetic-rush-470706-k8-dc764c5ba38e.json
         ports:
             - "8000:8000"
         expose:
@@ -63,6 +64,7 @@ services:
         volumes:
             - ./app:/app
             - ./.env:/app/.env
+            - ./aesthetic-rush-470706-k8-dc764c5ba38e.json:/app/aesthetic-rush-470706-k8-dc764c5ba38e.json
         command: celery -A tasks.story_tasks worker --loglevel=info --uid=nobody --gid=nogroup
         depends_on:
             redis:
