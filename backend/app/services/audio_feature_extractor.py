@@ -386,8 +386,8 @@ class AudioFeatureExtractor:
         original_duration = len(audio) / self.sample_rate
         print(f"원본 오디오 길이: {original_duration:.1f}초")
         
-        # 최소 1분(60초) 제한 조건 확인
-        min_required_duration = 60.0  # 1분
+        # 최소 제한 조건 확인
+        min_required_duration = 10.0  
         if original_duration < min_required_duration:
             print(f"❌ 오디오가 너무 짧습니다: {original_duration:.1f}초 < {min_required_duration}초")
             print("   치매 진단을 위해 최소 1분 이상의 오디오가 필요합니다.")
