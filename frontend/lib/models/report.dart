@@ -275,3 +275,46 @@ class ReportTextAnalysisData {
     );
   }
 }
+
+class ReportAudioAnalysisData {
+  final String? id;
+  final String sessionId;
+  final String? userId;
+  final String? familyId;
+  final String? mergedAudioPath;
+  final int totalSlices;
+  final int dementiaSlices;
+  final String riskLevel; // 'normal', 'suspect', 'risk'
+  final double? adjustedMean;
+  final DateTime? createdAt;
+
+  ReportAudioAnalysisData({
+    this.id,
+    required this.sessionId,
+    this.userId,
+    this.familyId,
+    this.mergedAudioPath,
+    required this.totalSlices,
+    required this.dementiaSlices,
+    required this.riskLevel,
+    this.adjustedMean,
+    this.createdAt,
+  });
+
+  double get dementiaRatio => totalSlices > 0 ? dementiaSlices / totalSlices : 0.0;
+
+  factory ReportAudioAnalysisData.fromJson(Map<String, dynamic> json) {
+    return ReportAudioAnalysisData(
+      id: json['id'],
+      sessionId: json['session_id'],
+      userId: json['user_id'],
+      familyId: json['family_id'],
+      mergedAudioPath: json['merged_audio_path'],
+      totalSlices: json['total_slices'] ?? 0,
+      dementiaSlices: json['dementia_slices'] ?? 0,
+      riskLevel: json['risk_level'] ?? 'normal',
+      adjustedMean: json['adjusted_mean']?.toDouble(),
+      createdAt: json['created_at'] != null ? DateTime.parse(json['created_at']) : null,
+    );
+  }
+}

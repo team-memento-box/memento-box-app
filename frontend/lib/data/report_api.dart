@@ -263,4 +263,43 @@ class ReportTextAnalysisApi {
       return null; // 에러 시 null 반환
     }
   }
+}
+
+class ReportAudioAnalysisApi {
+  /// 특정 세션의 음성 분석 데이터 조회
+  static Future<ReportAudioAnalysisData?> fetchAudioAnalysisData(
+    String sessionId,
+  ) async {
+    try {
+      print('🔍 Fetching audio analysis data for session: $sessionId');
+
+      final response = await SupabaseService.client
+          .from('session_audio_analysis')
+          .select('''
+            id,
+            session_id,
+            user_id,
+            family_id,
+            merged_audio_path,
+            total_slices,
+            dementia_slices,
+            risk_level,
+            adjusted_mean,
+            created_at
+          ''')
+          .eq('session_id', sessionId)
+          .maybeSingle();
+
+      if (response == null) {
+        print('ℹ️ No audio analysis data found for session: $sessionId');
+        return null;
+      }
+
+      print('✅ Audio analysis data fetched successfully');
+      return ReportAudioAnalysisData.fromJson(response);
+    } catch (e) {
+      print('❌ Error fetching audio analysis data: $e');
+      return null; // 에러 시 null 반환
+    }
+  }
 } 

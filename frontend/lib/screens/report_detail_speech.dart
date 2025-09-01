@@ -121,6 +121,7 @@ class ConversationHealthAnalysisScreen extends StatefulWidget {
 class _ConversationHealthAnalysisScreenState extends State<ConversationHealthAnalysisScreen> {
   HealthAnalysisData? data;
   ReportTextAnalysisData? textAnalysisData;
+  ReportAudioAnalysisData? audioAnalysisData;
   bool isLoading = false;
 
   @override
@@ -136,21 +137,43 @@ class _ConversationHealthAnalysisScreenState extends State<ConversationHealthAna
       ageGroup: "60대",
       ageGroupAverageRatio: 0.3,
     );
-    _loadTextAnalysisData();
+    _loadAnalysisData();
   }
 
-  Future<void> _loadTextAnalysisData() async {
+  Future<void> _loadAnalysisData() async {
     if (widget.sessionId != null || widget.reportData?.sessionId != null) {
       setState(() => isLoading = true);
       try {
         final sessionId = widget.sessionId ?? widget.reportData!.sessionId;
-        final analysisData = await ReportTextAnalysisApi.fetchTextAnalysisData(sessionId);
+        
+        // 병렬로 텍스트 분석과 음성 분석 데이터 로드
+        final results = await Future.wait([
+          ReportTextAnalysisApi.fetchTextAnalysisData(sessionId),
+          ReportAudioAnalysisApi.fetchAudioAnalysisData(sessionId),
+        ]);
+        
         setState(() {
-          textAnalysisData = analysisData;
+          textAnalysisData = results[0] as ReportTextAnalysisData?;
+          audioAnalysisData = results[1] as ReportAudioAnalysisData?;
+          
+          // 음성 분석 데이터가 있으면 HealthAnalysisData 업데이트
+          if (audioAnalysisData != null) {
+            data = HealthAnalysisData(
+              totalSegments: audioAnalysisData!.totalSlices,
+              dementiaSegmentsCount: audioAnalysisData!.dementiaSlices,
+              dementiaRatio: audioAnalysisData!.dementiaRatio,
+              aiVoiceScore: data?.aiVoiceScore ?? 66,
+              speechContentScore: data?.speechContentScore ?? 65,
+              userName: widget.reportData?.userName ?? data?.userName ?? "사용자",
+              ageGroup: widget.reportData?.ageGroup ?? data?.ageGroup ?? "60대",
+              ageGroupAverageRatio: 0.3, // TODO: 연령대별 평균 데이터 필요
+            );
+          }
+          
           isLoading = false;
         });
       } catch (e) {
-        print('❌ Error loading text analysis data: $e');
+        print('❌ Error loading analysis data: $e');
         setState(() => isLoading = false);
       }
     }
@@ -191,7 +214,12 @@ class _ConversationHealthAnalysisScreenState extends State<ConversationHealthAna
             SizedBox(height: screenHeight * 0.03),
             
             // AI 음성 분석 카드
-            _AIVoiceAnalysisCard(data: data!, screenWidth: screenWidth, screenHeight: screenHeight),
+            _AIVoiceAnalysisCard(
+              data: data!,
+              audioAnalysisData: audioAnalysisData,
+              screenWidth: screenWidth,
+              screenHeight: screenHeight,
+            ),
             SizedBox(height: screenHeight * 0.03),
             
             // 발화 언어 분석 카드
@@ -584,11 +612,13 @@ class _SummaryCard extends StatelessWidget {
 // AI Voice Analysis Card Component
 class _AIVoiceAnalysisCard extends StatelessWidget {
   final HealthAnalysisData data;
+  final ReportAudioAnalysisData? audioAnalysisData;
   final double screenWidth;
   final double screenHeight;
 
   const _AIVoiceAnalysisCard({
     required this.data,
+    this.audioAnalysisData,
     required this.screenWidth,
     required this.screenHeight,
   });
@@ -631,16 +661,42 @@ class _AIVoiceAnalysisCard extends StatelessWidget {
           const SizedBox(height: 12),
           const _SegmentLegend(),
           const SizedBox(height: 16),
-          _AnalysisResultText(data: data),
+          _AnalysisResultText(data: audioAnalysisData != null ? 
+            HealthAnalysisData(
+              totalSegments: audioAnalysisData!.totalSlices,
+              dementiaSegmentsCount: audioAnalysisData!.dementiaSlices,
+              dementiaRatio: audioAnalysisData!.dementiaRatio,
+              aiVoiceScore: data.aiVoiceScore,
+              speechContentScore: data.speechContentScore,
+              userName: data.userName,
+              ageGroup: data.ageGroup,
+              ageGroupAverageRatio: data.ageGroupAverageRatio,
+            ) : data),
           const SizedBox(height: 16),
           Text(
-            '대화 음성에서 인지 저하 신호가 일부 관찰되었습니다.\n단기적인 현상일 수 있으므로 정기적인 체크를 권장드립니다. 필요 시 정확한 전문가 진단을 받아보세요.',
+            _getAudioAnalysisRecommendation(),
             textAlign: TextAlign.center,
             style: AppTextStyles.smallText,
           ),
         ],
       ),
     );
+  }
+  
+  String _getAudioAnalysisRecommendation() {
+    if (audioAnalysisData == null) {
+      return '음성 분석 데이터를 불러오는 중입니다...';
+    }
+    
+    switch (audioAnalysisData!.riskLevel) {
+      case 'risk':
+        return '대화 음성에서 인지 저하 신호가 다수 관찰되었습니다.\n전문가의 정확한 진단을 받아보시기를 권장합니다.';
+      case 'suspect':
+        return '대화 음성에서 인지 저하 신호가 일부 관찰되었습니다.\n단기적인 현상일 수 있으므로 정기적인 체크를 권장드립니다.';
+      case 'normal':
+      default:
+        return '대화 음성이 정상 범위 내에 있습니다.\n현재 상태를 유지하시되, 정기적인 확인을 권장합니다.';
+    }
   }
 }
 
