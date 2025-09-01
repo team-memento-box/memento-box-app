@@ -2,9 +2,15 @@ import 'package:flutter/material.dart';
 
 class GroupBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
+  final List<Widget>? actions;
+  final Widget? leading;
 
-  const GroupBar({super.key, required this.title});
-
+  const GroupBar({
+      super.key,
+      required this.title,
+      this.actions,   // ← 추가
+      this.leading,   // ← 추가
+    });
   @override
   Widget build(BuildContext context) {
     return AppBar(
@@ -13,6 +19,8 @@ class GroupBar extends StatelessWidget implements PreferredSizeWidget {
       elevation: 0,
       toolbarHeight: 80,
       centerTitle: true,
+      leading: leading, 
+      actions: actions,
       title: Align(
         alignment: Alignment.bottomCenter,
         child: Text(

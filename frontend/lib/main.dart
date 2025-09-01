@@ -1,6 +1,7 @@
 import 'screens/mypage.dart';
 import 'package:provider/provider.dart'; // ✅ 추가✅
-import '../user_provider.dart'; // ✅ 추가✅
+import 'providers/user_provider.dart'; // ✅ 추가✅
+import 'providers/photo_provider.dart'; // ✅ 추가✅
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'screens/kakao_signin_screen.dart';
@@ -37,7 +38,8 @@ Future<void> main() async {
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => UserProvider()), // ✅ 추가✅
+        ChangeNotifierProvider(create: (_) => UserProvider()),
+        ChangeNotifierProvider(create: (_) => PhotoProvider()), // ✅ 추가✅
       ],
       child: const MyCustomApp(),
     ),
