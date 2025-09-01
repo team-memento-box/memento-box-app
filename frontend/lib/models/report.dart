@@ -151,6 +151,103 @@ class Report {
     );
   }
 
+  /// Session 데이터에서 Report 객체 생성 (session_reports 테이블이 없어도 작동)
+  factory Report.fromSession(Map<String, dynamic> sessionJson) {
+    try {
+      print('🔍 Processing session: ${sessionJson['id']}');
+      
+      // Null 안전성을 위한 변수들 먼저 확인
+      final sessionId = sessionJson['id'] as String? ?? '';
+      final userId = sessionJson['user_id'] as String? ?? '';
+      final startedAtStr = sessionJson['started_at'] as String?;
+      final createdAtStr = sessionJson['created_at'] as String?;
+      final userName = sessionJson['users']?['full_name'] as String?;
+      final birthDateStr = sessionJson['users']?['birth_date'] as String?;
+      
+      // SessionData 생성 시도
+      SessionData? session;
+      try {
+        session = SessionData.fromJson(sessionJson);
+      } catch (e) {
+        print('❌ Error creating SessionData: $e');
+        // 기본 SessionData 생성
+        session = SessionData(
+          id: sessionId,
+          status: sessionJson['status'] as String? ?? 'completed',
+          selectedPhotos: (sessionJson['selected_photos'] as List?)?.cast<String>() ?? [],
+          totalDurationSeconds: sessionJson['total_duration_seconds'] as int? ?? 0,
+          cistScore: sessionJson['cist_score'] as int?,
+          startedAt: startedAtStr != null ? DateTime.parse(startedAtStr) : null,
+          completedAt: sessionJson['completed_at'] != null ? DateTime.parse(sessionJson['completed_at']) : null,
+          notes: sessionJson['notes'] as String?,
+        );
+      }
+      
+      final conversations = sessionJson['conversations'] as List? ?? [];
+      
+      // CIST 점수 계산
+      int totalCistScore = 0;
+      int maxPossibleScore = 21;
+      
+      for (final conv in conversations) {
+        if (conv['is_cist_item'] == true && conv['cist_score'] != null) {
+          totalCistScore += conv['cist_score'] as int;
+        }
+      }
+      
+      // 인지 상태 판정
+      String cognitiveStatus = 'normal';
+      if (totalCistScore < 10) {
+        cognitiveStatus = 'high_concern';
+      } else if (totalCistScore < 14) {
+        cognitiveStatus = 'moderate_concern'; 
+      } else if (totalCistScore < 18) {
+        cognitiveStatus = 'mild_concern';
+      }
+      
+      // 기본 인사이트 및 권장사항
+      final insights = <String>[
+        '${conversations.length}개의 대화를 통해 분석되었습니다.',
+        'CIST 점수: $totalCistScore/$maxPossibleScore',
+        '세션 지속 시간: ${session.totalDurationSeconds}초'
+      ];
+      
+      final recommendations = <String>[
+        '정기적인 대화를 통해 지속적으로 모니터링하세요.',
+        '변화가 관찰되면 전문가와 상담하세요.'
+      ];
+      
+      return Report(
+        id: sessionId, // session_id를 report_id로 사용
+        sessionId: sessionId,
+        userId: userId,
+        totalCistScore: totalCistScore,
+        maxPossibleScore: maxPossibleScore,
+        cognitiveStatus: cognitiveStatus,
+        categoryScores: null,
+        insights: insights,
+        recommendations: recommendations,
+        reportGeneratedAt: startedAtStr != null 
+            ? DateTime.parse(startedAtStr) 
+            : DateTime.now(),
+        isShared: false,
+        sharedAt: null,
+        createdAt: createdAtStr != null 
+            ? DateTime.parse(createdAtStr) 
+            : DateTime.now(),
+        session: session,
+        userName: userName,
+        userBirthDate: birthDateStr != null 
+            ? DateTime.parse(birthDateStr) 
+            : null,
+      );
+    } catch (e) {
+      print('❌ Fatal error in Report.fromSession: $e');
+      print('❌ Session data: $sessionJson');
+      rethrow;
+    }
+  }
+
   // 기존 API 호환성을 위한 getter들
   String get reportId => id;
   String get convId => sessionId;
@@ -219,5 +316,36 @@ class Report {
   String get userDisplayName {
     if (userName == null || userName!.isEmpty) return '사용자';
     return userName!.endsWith('님') ? userName! : '${userName!}님';
+  }
+
+  // 주요 사진 ID (첫 번째 대화의 photo_id)
+  String? get primaryPhotoId => session?.conversations?.first.photoId;
+  
+  // 주요 사진 정보
+  Photo? get primaryPhoto => session?.conversations?.first.photo;
+  
+  // 사진 기반 제목 생성
+  String get photoBasedTitle {
+    final photo = primaryPhoto;
+    final photoName = photo?.originalFilename ?? photo?.filename ?? '사진';
+    final dateTime = '${createdAt.year}년 ${createdAt.month.toString().padLeft(2, '0')}월 ${createdAt.day.toString().padLeft(2, '0')}일 ${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}';
+    
+    return '$dateTime $userDisplayName [$photoName] 대화 분석 보고서';
+  }
+  
+  // 사진이 있는 리포트인지 확인
+  bool get hasPhoto => primaryPhotoId != null;
+  
+  // 사진 기반 요약 정보
+  String get photoSummary {
+    if (!hasPhoto) return '사진 없음';
+    
+    final photo = primaryPhoto;
+    if (photo?.description?.isNotEmpty == true) {
+      return photo!.description!;
+    }
+    
+    final filename = photo?.originalFilename ?? photo?.filename ?? '사진';
+    return filename;
   }
 }

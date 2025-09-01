@@ -46,10 +46,12 @@ class _ReportListScreenState extends State<ReportListScreen> {
         return;
       }
       
-      final result = await ReportApi.fetchReports(accessToken);
-      print('==== [DEBUG] _loadReports result.length: ${result.length}');
+      // Session 기반 API 사용: sessions 테이블에서 직접 조회
+      final result = await ReportApi.fetchSessionBasedReports(accessToken);
+      print('==== [DEBUG] _loadReports (session-based) result.length: ${result.length}');
       for (var i = 0; i < result.length; i++) {
-        print('==== [DEBUG] _loadReports report[$i]: id=${result[i].id}, created_at=${result[i].createdAt}');
+        final report = result[i];
+        print('==== [DEBUG] _loadReports report[$i]: id=${report.id}, photo_id=${report.primaryPhotoId}, created_at=${report.createdAt}');
       }
       setState(() {
         reports = result;
@@ -167,8 +169,8 @@ class AppConstants {
       'AI가 대화를 분석해 평가한 상태 분석 보고서를 제공합니다.\n본 보고서는 참고 자료이며, 절대적인 해석이 아님을 유의해 주세요.';
 
   // TODO: 에러 메시지들도 API에서 받아와서 다국어 지원 예정
-  static const String noReportsMessage = '분석 보고서가 없습니다.';
-  static const String addFilesMessage = 'assets/analysis/ 폴더에 .txt 파일을 추가하세요.';
+  static const String noReportsMessage = '대화 기록이 없습니다.';
+  static const String addFilesMessage = '사진을 업로드하고 대화를 나눠보세요.';
   static const String refreshButtonText = '새로고침';
 }
 
@@ -289,16 +291,9 @@ class ReportListWidget extends StatelessWidget {
           itemCount: reports.length,
           itemBuilder: (context, index) {
             final report = reports[index];
-            // created_at을 yyyy-MM-dd HH:mm 포맷으로 변환
-            String formattedDate = '';
-            if (report.createdAt != null) {
-              final date = report.createdAt;
-              formattedDate =
-                  '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-            }
             return ReportItemWidget(
               isSelected: index == 0,
-              displayTitle: formattedDate.isNotEmpty ? '$formattedDate 가족 구성원 대화 분석 보고서' : '가족 구성원 대화 분석 보고서',
+              displayTitle: report.photoBasedTitle,
               createdAt: report.createdAt.toString(),
               report: report,
               allReports: reports,
