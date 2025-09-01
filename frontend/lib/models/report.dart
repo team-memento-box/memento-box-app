@@ -75,9 +75,9 @@ class ConversationData {
     return ConversationData(
       id: json['id'],
       conversationOrder: json['conversation_order'],
-      questionText: json['question_text'],
+      questionText: json['ai_output'],
       questionType: json['question_type'],
-      userResponseText: json['user_response_text'],
+      userResponseText: json['user_input'],
       userResponseAudioUrl: json['user_response_audio_url'],
       responseDurationSeconds: json['response_duration_seconds'],
       aiAnalysis: json['ai_analysis'],

@@ -36,6 +36,7 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
   bool _isProcessing = false;
   String _processingMessage = '';
   Photo? _currentPhoto;
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -47,6 +48,7 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
   void dispose() {
     _webSocketService.disconnect();
     _messageController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -84,10 +86,8 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
       await _webSocketService.connect(_conversationId);
       print('✅ WebSocket 연결 완료');
       
-      // 잠시 대기 후 초기 메시지 전송
-      await Future.delayed(const Duration(milliseconds: 1000));
-      print('💬 초기 메시지 전송');
-      _sendMessage('안녕하세요! 이 사진에 대해 이야기해보세요.');
+      // 자동 메시지 전송 제거 - 사용자가 직접 대화를 시작하도록 함
+      print('✅ WebSocket 연결 완료, 사용자 입력 대기 중');
       
     } catch (e) {
       print('❌ 대화 초기화 실패: $e');
@@ -169,6 +169,9 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
         });
         
         print('✅ AI 메시지 UI에 추가됨: ${_messages.length}개 메시지');
+        
+        // AI 응답이 들어올 때 자동 스크롤
+        _scrollToBottom();
       } else {
         print('⚠️ 예상과 다른 메시지 형식:');
         print('  type: ${message['type']}');
@@ -238,6 +241,9 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
     });
 
     print('💬 UI에 사용자 메시지 추가됨: ${_messages.length}개 메시지');
+    
+    // 사용자 메시지가 들어올 때 자동 스크롤
+    _scrollToBottom();
 
     // WebSocket으로 전송
     final photoContext = {
@@ -310,6 +316,19 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
       Navigator.of(context).pop();
     }
   }
+  
+  /// 자동 스크롤 함수
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients && mounted) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -377,38 +396,66 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
           ),
           // 메시지 목록
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              itemCount: _messages.length + (_isProcessing ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index == _messages.length && _isProcessing) {
-                  // 처리 중 메시지 표시
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: AssistantBubble(
-                      text: _processingMessage,
-                      isActive: true,
-                    ),
-                  );
-                }
-                
-                final message = _messages[index];
-                final isAi = message['type'] == 'ai';
-                
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: isAi
-                      ? AssistantBubble(
-                          text: message['text'],
-                          isActive: false,
-                        )
-                      : UserSpeechBubble(
-                          text: message['text'],
-                          isActive: false,
+            child: _messages.isEmpty && !_isProcessing
+                ? Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.chat_bubble_outline,
+                          size: 64,
+                          color: Colors.grey[400],
                         ),
-                );
-              },
-            ),
+                        const SizedBox(height: 24),
+                        const Text(
+                          '메시지를 입력하여\n대화를 시작해보세요.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 18,
+                            color: Color(0xFF666666),
+                            fontFamily: 'Pretendard',
+                            fontWeight: FontWeight.w600,
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    itemCount: _messages.length + (_isProcessing ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (index == _messages.length && _isProcessing) {
+                        // 처리 중 메시지 표시
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: AssistantBubble(
+                            text: _processingMessage,
+                            isActive: true,
+                          ),
+                        );
+                      }
+                      
+                      final message = _messages[index];
+                      final isAi = message['type'] == 'ai';
+                      
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: isAi
+                            ? AssistantBubble(
+                                text: message['text'],
+                                isActive: false,
+                              )
+                            : UserSpeechBubble(
+                                text: message['text'],
+                                isActive: false,
+                              ),
+                      );
+                    },
+                  ),
           ),
           // 메시지 입력 영역
           Container(

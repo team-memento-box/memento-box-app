@@ -10,9 +10,18 @@ from datetime import datetime
 from services.dialogue_workflow import DialogueWorkflow, WorkflowInput
 from core.auth import get_supabase_user
 from core.config import supabase_admin
-from routers import chat, conversation, openai, audio_analysis  # AI 전용 라우터들
+from routers import chat, conversation, openai, photos  # AI 전용 라우터들
 
-app = FastAPI(title="Memento Box AI API", description="AI 전용 API - 채팅, 이미지 분석, 음성 합성")
+# 오디오 분석 라우터 추가 (조건부 로드)
+try:
+    from routers import audio_analysis
+    AUDIO_ANALYSIS_AVAILABLE = True
+    print("✅ Audio analysis router 로드 성공")
+except ImportError as e:
+    print(f"⚠️ Audio analysis router 로드 실패: {e}")
+    AUDIO_ANALYSIS_AVAILABLE = False
+
+app = FastAPI(title="Memento Box AI API", description="AI 전용 API - 채팅, 이미지 분석, 음성 합성, 음성 분석")
 
 # CORS 설정
 app.add_middleware(
@@ -27,7 +36,12 @@ app.add_middleware(
 app.include_router(chat.router, prefix="/api", tags=["chat-legacy"])
 app.include_router(conversation.router, prefix="/api", tags=["conversation"])
 app.include_router(openai.router, prefix="/api/openai", tags=["openai"])
-app.include_router(audio_analysis.router, prefix="/api", tags=["audio-analysis"])
+app.include_router(photos.router, prefix="/api", tags=["photos"])
+
+# 오디오 분석 라우터 등록 (가능한 경우)
+if AUDIO_ANALYSIS_AVAILABLE:
+    app.include_router(audio_analysis.router, prefix="/api", tags=["audio-analysis"])
+    print("✅ Audio analysis router 등록 완료")
 
 # LangGraph 대화 워크플로우 초기화
 workflow = DialogueWorkflow()
@@ -229,5 +243,6 @@ def health_check():
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "openai_configured": bool(os.getenv("OPENAI_API_KEY")),
-        "supabase_configured": bool(os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_ANON_KEY"))
+        "supabase_configured": bool(os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_ANON_KEY")),
+        "audio_analysis_available": AUDIO_ANALYSIS_AVAILABLE
     }
