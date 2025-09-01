@@ -1,21 +1,40 @@
+# Core FastAPI dependencies
 fastapi>=0.104.1
 uvicorn>=0.24.0
 python-dotenv>=1.0.0
 python-multipart>=0.0.6
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# Database and Storage
 supabase>=2.0.0
+asyncpg
+psycopg2-binary
+alembic
+
+# Auth and Security
+python-jose[cryptography]>=3.3.0
+passlib>=1.7.4
+
+# HTTP and Web
+httpx>=0.24.0
+aiohttp
+aiofiles
+websockets>=12.0
+
+# AI and Language Models
 langchain>=0.1.0
 langchain-openai>=0.0.8
 langgraph>=0.0.25
 langsmith>=0.1.0
-websockets>=12.0
+openai
+tiktoken
+
+# Task Queue
 celery[redis]>=5.3.6
 redis>=5.0.1
-pydantic>=2.0.0
-pydantic-settings>=2.0.0
-python-jose[cryptography]>=3.3.0
-passlib>=1.7.4
 
-# Audio processing and ML dependencies
+# Audio processing and ML (for audio analysis)
 numpy>=1.24.0
 pandas>=2.0.0
 librosa>=0.10.0
@@ -23,6 +42,10 @@ scikit-learn>=1.3.0
 scipy>=1.10.0
 soundfile>=0.12.0
 noisereduce>=3.0.0
-httpx>=0.24.0
 joblib>=1.3.0
 
+# Additional dependencies from develop branch
+pytz
+python-dateutil
+pygame
+pydub
