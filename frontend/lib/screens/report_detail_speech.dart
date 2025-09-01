@@ -230,7 +230,7 @@ class _ConversationHealthAnalysisScreenState extends State<ConversationHealthAna
             
             // 요약 카드들
             DetailSpeechSummary(screenWidth),
-            SizedBox(height: screenHeight * 0.04),
+            SizedBox(height: screenHeight * 0.08), // 간격 증가
             
             // 회색 삼각형 (더 길고 연한 색상)
             Center(
@@ -246,7 +246,7 @@ class _ConversationHealthAnalysisScreenState extends State<ConversationHealthAna
                 ),
               ),
             ),
-            SizedBox(height: screenHeight * 0.04),
+            SizedBox(height: screenHeight * 0.06), // 간격 증가
             
             // AI 음성 분석 카드
             _AIVoiceAnalysisCard(
@@ -555,10 +555,13 @@ Widget _DetailSpeechSummary(double screenWidth, HealthAnalysisData data) {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      image: DecorationImage(
-                        image: AssetImage("assets/icons/Audio_icon.png"),
-                        fit: BoxFit.contain,
-                      ),
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Icon(
+                      Icons.record_voice_over,
+                      color: Colors.white,
+                      size: 24,
                     ),
                   ),
                   Flexible(
@@ -643,10 +646,13 @@ Widget _DetailSpeechSummary(double screenWidth, HealthAnalysisData data) {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      image: DecorationImage(
-                        image: AssetImage("assets/icons/Language_icon.png"),
-                        fit: BoxFit.contain,
-                      ),
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Icon(
+                      Icons.chat_bubble_outline,
+                      color: Colors.white,
+                      size: 24,
                     ),
                   ),
                   Flexible(
@@ -1138,44 +1144,47 @@ class _SegmentLegend extends StatelessWidget {
     final visualDementiaSlices = (data.dementiaRatio * visualSlices).round();
     final normalSlices = visualSlices - visualDementiaSlices;
     
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        // 정상 구간의 중앙에 "정상" 레이블 배치
-        if (normalSlices > 0)
-          Expanded(
-            flex: normalSlices,
-            child: Center(
-              child: Text(
-                '정상',
-                style: TextStyle(
-                  color: AppColors.normalSegment,
-                  fontSize: 12,
-                  fontFamily: 'Pretendard',
-                  fontWeight: FontWeight.w800,
-                  height: 1.5,
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // 정상 구간의 중앙에 "정상" 레이블 배치
+          if (normalSlices > 0)
+            Expanded(
+              flex: normalSlices,
+              child: Center(
+                child: Text(
+                  '정상',
+                  style: TextStyle(
+                    color: AppColors.normalSegment,
+                    fontSize: 12,
+                    fontFamily: 'Pretendard',
+                    fontWeight: FontWeight.w800,
+                    height: 1.5,
+                  ),
                 ),
               ),
             ),
-          ),
-        // 위험 구간의 중앙에 "의심" 레이블 배치  
-        if (visualDementiaSlices > 0)
-          Expanded(
-            flex: visualDementiaSlices,
-            child: Center(
-              child: Text(
-                '의심',
-                style: TextStyle(
-                  color: AppColors.riskSegment,
-                  fontSize: 12,
-                  fontFamily: 'Pretendard',
-                  fontWeight: FontWeight.w800,
-                  height: 1.5,
+          // 위험 구간의 중앙에 "의심" 레이블 배치  
+          if (visualDementiaSlices > 0)
+            Expanded(
+              flex: visualDementiaSlices,
+              child: Center(
+                child: Text(
+                  '의심',
+                  style: TextStyle(
+                    color: AppColors.riskSegment,
+                    fontSize: 12,
+                    fontFamily: 'Pretendard',
+                    fontWeight: FontWeight.w800,
+                    height: 1.5,
+                  ),
                 ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -1877,244 +1886,211 @@ class DataDiamondPainter extends CustomPainter {
 }
 
 Widget DetailSpeechSummary(double screenWidth) {
-  return Column(
-    children: [
-      Container(
-        width: 220,
-        height: 170,
-        child: Stack(
-          children: [
-            Positioned(
-              left: 0,
-              top: 0,
-              child: Container(
-                width: 127.83,
-                height: 179,
-                decoration: ShapeDecoration(
-                  color: const Color(0xFF9BDDB8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(13),
-                  ),
-                  shadows: [
-                    BoxShadow(
-                      color: Color(0x19000000),
-                      blurRadius: 5,
-                      offset: Offset(0, 2),
-                      spreadRadius: 0,
+  final cardWidth = screenWidth * 0.4; // 화면 너비의 40%
+  final cardHeight = screenWidth * 0.35; // 화면 너비의 35%
+  final spacing = screenWidth * 0.04; // 카드 간격
+  
+  return Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 20),
+    child: Row(
+      children: [
+        // AI 음성 분석 요약 카드
+        Expanded(
+          child: Container(
+            height: cardHeight,
+            decoration: ShapeDecoration(
+              color: const Color(0xFF9BDDB8),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(13),
+              ),
+              shadows: [
+                BoxShadow(
+                  color: Color(0x19000000),
+                  blurRadius: 5,
+                  offset: Offset(0, 2),
+                  spreadRadius: 0,
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'AI 음성 분석 요약',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: screenWidth * 0.032,
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w800,
                     ),
-                  ],
-                ),
-              ),
-            ),
-            Positioned(
-              left: 11,
-              top: 120,
-              child: SizedBox(
-                width: 107,
-                height: 45,
-                child: Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: '서봉봉님, 이번 대화에서\n ',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.w700,
-                          shadows: [
-                            Shadow(
-                              offset: Offset(0, 1),
-                              blurRadius: 5,
-                              color: Color(0xFFCFCFCF).withOpacity(0.30),
-                            ),
-                          ],
-                        ),
-                      ),
-                      TextSpan(
-                        text: '60대 평균보다\n',
-                        style: TextStyle(
-                          color: const Color(0xFF777777),
-                          fontSize: 11,
-                          fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.w700,
-                          shadows: [
-                            Shadow(
-                              offset: Offset(0, 1),
-                              blurRadius: 5,
-                              color: Color(0xFFCFCFCF).withOpacity(0.30),
-                            ),
-                          ],
-                        ),
-                      ),
-                      TextSpan(
-                        text: '낮게 나왔어요\n',
-                        style: TextStyle(
-                          color: const Color(0xFFF45C5C),
-                          fontSize: 11,
-                          fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.w700,
-                          shadows: [
-                            Shadow(
-                              offset: Offset(0, 1),
-                              blurRadius: 5,
-                              color: Color(0xFFCFCFCF).withOpacity(0.30),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
                   ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
-            Positioned(
-              left: 14,
-              top: 9,
-              child: SizedBox(
-                width: 98.08,
-                height: 30.32,
-                child: Text(
-                  'AI 음성 분석 요약',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontFamily: 'Pretendard',
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              left: 138,
-              top: 0,
-              child: Container(
-                width: 127.83,
-                height: 179,
-                decoration: ShapeDecoration(
-                  color: const Color(0xFF9BDDB8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(13),
-                  ),
-                  shadows: [
-                    BoxShadow(
-                      color: Color(0x19000000),
-                      blurRadius: 5,
-                      offset: Offset(0, 2),
-                      spreadRadius: 0,
+                  Container(
+                    width: screenWidth * 0.1,
+                    height: screenWidth * 0.1,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Color(0x19000000),
+                          blurRadius: 4,
+                          offset: Offset(0, 2),
+                          spreadRadius: 0,
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-            ),
-            Positioned(
-              left: 148,
-              top: 9,
-              child: SizedBox(
-                width: 109,
-                height: 30,
-                child: Text(
-                  '발화 언어 분석 요약',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontFamily: 'Pretendard',
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              left: 148,
-              top: 120,
-              child: SizedBox(
-                width: 109,
-                height: 45,
-                child: Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: '서봉봉님, 이번 대화에서\n',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      TextSpan(
-                        text: '60대 평균보다\n',
-                        style: TextStyle(
-                          color: const Color(0xFF777777),
-                          fontSize: 11,
-                          fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      TextSpan(
-                        text: '낮게 나왔어요',
-                        style: TextStyle(
-                          color: const Color(0xFFF45C5C),
-                          fontSize: 11,
-                          fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
-            Positioned(
-              left: 175,
-              top: 41,
-              child: Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Color(0x19000000),
-                      blurRadius: 4,
-                      offset: Offset(0, 2),
-                      spreadRadius: 0,
+                    child: Icon(
+                      Icons.record_voice_over,
+                      color: Color(0xFF9BDDB8),
+                      size: screenWidth * 0.08,
                     ),
-                  ],
-                ),
-                child: Icon(
-                  Icons.record_voice_over,
-                  color: Color(0xFF7CD0A0),
-                  size: 32,
-                ),
+                  ),
+                  Flexible(
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: '서봉봉님, 이번 대화에서\n',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: screenWidth * 0.028,
+                              fontFamily: 'Pretendard',
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          TextSpan(
+                            text: '60대 평균보다\n',
+                            style: TextStyle(
+                              color: const Color(0xFF777777),
+                              fontSize: screenWidth * 0.028,
+                              fontFamily: 'Pretendard',
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          TextSpan(
+                            text: '낮게 나왔어요',
+                            style: TextStyle(
+                              color: const Color(0xFFF45C5C),
+                              fontSize: screenWidth * 0.028,
+                              fontFamily: 'Pretendard',
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ],
               ),
             ),
-            Positioned(
-              left: 38,
-              top: 46,
-              child: Container(
-                width: 51,
-                height: 51,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  Icons.mic,
-                  color: Color(0xFF7CD0A0),
-                  size: 28,
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
-    ],
+        
+        SizedBox(width: spacing),
+        
+        // 발화 언어 분석 요약 카드
+        Expanded(
+          child: Container(
+            height: cardHeight,
+            decoration: ShapeDecoration(
+              color: const Color(0xFF9BDDB8),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(13),
+              ),
+              shadows: [
+                BoxShadow(
+                  color: Color(0x19000000),
+                  blurRadius: 5,
+                  offset: Offset(0, 2),
+                  spreadRadius: 0,
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '발화 언어 분석 요약',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: screenWidth * 0.032,
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  Container(
+                    width: screenWidth * 0.1,
+                    height: screenWidth * 0.1,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Color(0x19000000),
+                          blurRadius: 4,
+                          offset: Offset(0, 2),
+                          spreadRadius: 0,
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      Icons.chat_bubble_outline,
+                      color: Color(0xFF9BDDB8),
+                      size: screenWidth * 0.08,
+                    ),
+                  ),
+                  Flexible(
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: '서봉봉님, 이번 대화에서\n',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: screenWidth * 0.028,
+                              fontFamily: 'Pretendard',
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          TextSpan(
+                            text: '60대 평균보다\n',
+                            style: TextStyle(
+                              color: const Color(0xFF777777),
+                              fontSize: screenWidth * 0.028,
+                              fontFamily: 'Pretendard',
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          TextSpan(
+                            text: '낮게 나왔어요',
+                            style: TextStyle(
+                              color: const Color(0xFFF45C5C),
+                              fontSize: screenWidth * 0.028,
+                              fontFamily: 'Pretendard',
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    ),
   );
 }
 
