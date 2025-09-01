@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'dart:convert' show utf8;
 import 'dart:math';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import '../user_provider.dart';
+import '../providers/user_provider.dart';
 import '../widgets/family_dropdown.dart';
 import '../utils/routes.dart';
 import '../core/supabase_service.dart';

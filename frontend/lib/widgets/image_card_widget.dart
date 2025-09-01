@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class NewsCard extends StatelessWidget {
   final String name;
@@ -108,38 +109,29 @@ class NewsCard extends StatelessWidget {
 
   Widget _buildImage() {
     if (imageUrl != null && imageUrl!.isNotEmpty) {
-      return Image.network(
-        imageUrl!,
+      return CachedNetworkImage(
+        imageUrl: imageUrl!,
         width: double.infinity,
         height: 150,
         fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) {
-          return Container(
-            width: double.infinity,
-            height: 150,
-            color: Colors.grey[300],
-            child: const Icon(
-              Icons.image_not_supported,
-              color: Colors.grey,
-              size: 40,
-            ),
-          );
-        },
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return Container(
-            width: double.infinity,
-            height: 150,
-            color: Colors.grey[100],
-            child: Center(
-              child: CircularProgressIndicator(
-                value: loadingProgress.expectedTotalBytes != null
-                    ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
-                    : null,
-              ),
-            ),
-          );
-        },
+        placeholder: (context, url) => Container(
+          width: double.infinity,
+          height: 150,
+          color: Colors.grey[100],
+          child: const Center(
+            child: CircularProgressIndicator(),
+          ),
+        ),
+        errorWidget: (context, url, error) => Container(
+          width: double.infinity,
+          height: 150,
+          color: Colors.grey[300],
+          child: const Icon(
+            Icons.image_not_supported,
+            color: Colors.grey,
+            size: 40,
+          ),
+        ),
       );
     } else if (assetImagePath != null && assetImagePath!.isNotEmpty) {
       return Image.asset(

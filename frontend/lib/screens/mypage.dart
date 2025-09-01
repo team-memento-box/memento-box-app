@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../user_provider.dart';
+import '../providers/user_provider.dart';
 import '../widgets/tap_widget.dart';
 import '../widgets/group_bar_widget.dart';
 import '../core/supabase_service.dart';
