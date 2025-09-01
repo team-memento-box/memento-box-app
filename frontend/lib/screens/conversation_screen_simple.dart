@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:io';
-import 'package:record/record.dart';
+import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../services/websocket_service.dart';
 import '../core/supabase_service.dart';
@@ -35,7 +35,7 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
   final TextEditingController _messageController = TextEditingController();
   final List<Map<String, dynamic>> _messages = [];
   final AudioService _audioService = AudioService();
-  final AudioRecorder _audioRecorder = AudioRecorder();
+  final RecorderController _audioRecorder = RecorderController();
   
   String _conversationId = '';
   String _sessionId = '';
@@ -185,11 +185,12 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
     }
 
     try {
-      await _audioRecorder.start(const RecordConfig(
-        encoder: AudioEncoder.wav,
-        bitRate: 16000,
+      await _audioRecorder.record(
+        androidEncoder: AndroidEncoder.aac,
+        androidOutputFormat: AndroidOutputFormat.mpeg4,
+        iosEncoder: IosEncoder.kAudioFormatMPEG4AAC,
         sampleRate: 16000,
-      ));
+      );
 
       setState(() {
         _isRecording = true;
