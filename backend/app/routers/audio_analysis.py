@@ -339,18 +339,44 @@ async def _update_session_merged_audio_url(
 
 async def _download_wav(url: str) -> Tuple[np.ndarray, int]:
     """
-    WAV 파일을 다운로드하여 (waveform[np.float32, mono], sample_rate)를 반환.
+    오디오 파일을 다운로드하여 (waveform[np.float32, mono], sample_rate)를 반환.
+    WAV, M4A 등 다양한 형식을 지원.
     """
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
         r = await client.get(url)
         r.raise_for_status()
         data = io.BytesIO(r.content)
 
-    # soundfile로 읽기 (always_2d=True로 채널 차원 확보)
-    y, sr = sf.read(data, dtype="float32", always_2d=True)  # (n_samples, n_channels)
-    # 모노 변환(평균)
-    y = y.mean(axis=1).astype(np.float32)  # (n_samples,)
-    return y, sr
+    try:
+        # soundfile로 읽기 시도 (대부분의 WAV 파일)
+        y, sr = sf.read(data, dtype="float32", always_2d=True)  # (n_samples, n_channels)
+        # 모노 변환(평균)
+        y = y.mean(axis=1).astype(np.float32)  # (n_samples,)
+        return y, sr
+    except Exception as e:
+        print(f"⚠️ soundfile로 읽기 실패, pydub로 재시도: {e}")
+        try:
+            # pydub으로 fallback (M4A 등 다른 형식)
+            from pydub import AudioSegment
+            import numpy as np
+            
+            data.seek(0)  # 스트림 위치 재설정
+            
+            # 형식 자동 감지로 로드
+            audio_segment = AudioSegment.from_file(data)
+            
+            # WAV 형식으로 변환하여 numpy 배열로
+            wav_io = io.BytesIO()
+            audio_segment.export(wav_io, format="wav")
+            wav_io.seek(0)
+            
+            # soundfile로 다시 읽기
+            y, sr = sf.read(wav_io, dtype="float32", always_2d=True)
+            y = y.mean(axis=1).astype(np.float32)  # 모노 변환
+            return y, sr
+            
+        except Exception as fallback_error:
+            raise Exception(f"오디오 파일 처리 실패 (soundfile: {e}, pydub: {fallback_error})")
 
 def _resample_if_needed(y: np.ndarray, sr_src: int, sr_tgt: int) -> np.ndarray:
     if sr_src == sr_tgt:

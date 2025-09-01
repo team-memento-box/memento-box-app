@@ -9,6 +9,8 @@ import uuid
 from datetime import datetime
 import base64
 import tempfile
+import io
+from pydub import AudioSegment
 from services.dialogue_workflow import DialogueWorkflow, WorkflowInput
 from services.voice_system import VoiceSystem
 from core.auth import get_supabase_user
@@ -221,6 +223,22 @@ async def websocket_chat_endpoint(websocket: WebSocket, conversation_id: str):
                         # 오디오 데이터 디코딩
                         audio_bytes = base64.b64decode(audio_base64)
                         
+                        # M4A를 WAV로 변환
+                        try:
+                            # M4A 데이터를 AudioSegment로 로드
+                            audio_io = io.BytesIO(audio_bytes)
+                            audio_segment = AudioSegment.from_file(audio_io, format="m4a")
+                            
+                            # WAV로 변환
+                            wav_io = io.BytesIO()
+                            audio_segment.export(wav_io, format="wav")
+                            wav_bytes = wav_io.getvalue()
+                            
+                            print(f"✅ M4A를 WAV로 변환 완료 (크기: {len(audio_bytes)} -> {len(wav_bytes)})")
+                        except Exception as convert_error:
+                            print(f"⚠️ 오디오 변환 실패, 원본 사용: {convert_error}")
+                            wav_bytes = audio_bytes  # 변환 실패 시 원본 사용
+                        
                         # conversation_id 생성 (UUID)
                         audio_conversation_id = str(uuid.uuid4())
                         
@@ -230,12 +248,12 @@ async def websocket_chat_endpoint(websocket: WebSocket, conversation_id: str):
                         # Supabase Storage에 업로드
                         storage_response = supabase_admin.storage.from_("voice").upload(
                             file_path,
-                            audio_bytes,
-                            {"content-type": "audio/wav"}  # M4A이지만 wav로 저장
+                            wav_bytes,
+                            {"content-type": "audio/wav"}
                         )
                         
-                        # 공개 URL 생성
-                        audio_url = supabase_admin.storage.from_("voice").get_public_url(file_path)
+                        # 상대 경로로 저장 (전체 URL 대신)
+                        audio_url = file_path
                         print(f"✅ 음성 파일 저장 완료: {audio_url}")
                     else:
                         print("⚠️ family_id를 찾을 수 없어 음성 파일을 저장하지 않습니다")
