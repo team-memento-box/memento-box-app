@@ -119,6 +119,7 @@ class WebSocketService {
     }
 
     final messageData = {
+      'type': 'text',
       'user_id': userId,
       'message': message,
       'photo_context': photoContext ?? {},
@@ -130,18 +131,59 @@ class WebSocketService {
     }
 
     final jsonData = jsonEncode(messageData);
-    print('📤 WebSocket 메시지 전송:');
+    print('📤 WebSocket 텍스트 메시지 전송:');
     print('  User ID: $userId');
     print('  Message: $message');
     print('  Photo Context: ${photoContext ?? {}}');
     print('  JWT Token: ${jwtToken != null ? 'Present' : 'None'}');
-    print('  JSON Data: $jsonData');
 
     try {
       _channel!.sink.add(jsonData);
-      print('✅ 메시지 전송 성공');
+      print('✅ 텍스트 메시지 전송 성공');
     } catch (e) {
       final sendError = '메시지 전송 실패: $e';
+      print('❌ $sendError');
+      onError?.call(sendError);
+    }
+  }
+
+  void sendAudioMessage({
+    required String userId,
+    required String audioBase64,
+    Map<String, dynamic>? photoContext,
+    String? jwtToken,
+  }) {
+    if (_channel == null) {
+      final errorMsg = 'WebSocket이 연결되지 않았습니다.';
+      print('❌ $errorMsg');
+      onError?.call(errorMsg);
+      return;
+    }
+
+    final messageData = {
+      'type': 'audio',
+      'user_id': userId,
+      'audio_data': audioBase64,
+      'photo_context': photoContext ?? {},
+    };
+    
+    // JWT 토큰이 있으면 추가
+    if (jwtToken != null) {
+      messageData['jwt_token'] = jwtToken;
+    }
+
+    final jsonData = jsonEncode(messageData);
+    print('📤 WebSocket 오디오 메시지 전송:');
+    print('  User ID: $userId');
+    print('  Audio Data Length: ${audioBase64.length} chars');
+    print('  Photo Context: ${photoContext ?? {}}');
+    print('  JWT Token: ${jwtToken != null ? 'Present' : 'None'}');
+
+    try {
+      _channel!.sink.add(jsonData);
+      print('✅ 오디오 메시지 전송 성공');
+    } catch (e) {
+      final sendError = '오디오 메시지 전송 실패: $e';
       print('❌ $sendError');
       onError?.call(sendError);
     }

@@ -2,12 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:typed_data';
+import 'dart:io';
+import 'package:record/record.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../services/websocket_service.dart';
 import '../core/supabase_service.dart';
 import '../widgets/assistant_bubble.dart';
 import '../widgets/user_speech_bubble.dart';
 import '../widgets/photo_box.dart';
 import '../models/photo.dart';
+import '../utils/audio_service.dart';
 
 class PhotoConversationScreen extends StatefulWidget {
   final String photoId;
@@ -29,6 +34,9 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
   final WebSocketService _webSocketService = WebSocketService();
   final TextEditingController _messageController = TextEditingController();
   final List<Map<String, dynamic>> _messages = [];
+  final AudioService _audioService = AudioService();
+  final AudioRecorder _audioRecorder = AudioRecorder();
+  
   String _conversationId = '';
   String _sessionId = '';
   String _userId = 'temp_user';
@@ -37,10 +45,15 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
   String _processingMessage = '';
   Photo? _currentPhoto;
   final ScrollController _scrollController = ScrollController();
+  
+  // 음성 녹음 관련 상태
+  bool _isRecording = false;
+  bool _hasRecordPermission = false;
 
   @override
   void initState() {
     super.initState();
+    _checkRecordPermission();
     _initializeConversation();
   }
 
@@ -49,6 +62,8 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
     _webSocketService.disconnect();
     _messageController.dispose();
     _scrollController.dispose();
+    _audioService.dispose();
+    _audioRecorder.dispose();
     super.dispose();
   }
 
@@ -149,6 +164,107 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
     }
   }
 
+  Future<void> _checkRecordPermission() async {
+    final status = await Permission.microphone.status;
+    if (status != PermissionStatus.granted) {
+      final result = await Permission.microphone.request();
+      setState(() {
+        _hasRecordPermission = result == PermissionStatus.granted;
+      });
+    } else {
+      setState(() {
+        _hasRecordPermission = true;
+      });
+    }
+  }
+
+  Future<void> _startRecording() async {
+    if (!_hasRecordPermission) {
+      await _checkRecordPermission();
+      if (!_hasRecordPermission) return;
+    }
+
+    try {
+      await _audioRecorder.start(const RecordConfig(
+        encoder: AudioEncoder.wav,
+        bitRate: 16000,
+        sampleRate: 16000,
+      ));
+
+      setState(() {
+        _isRecording = true;
+      });
+
+      print('🎤 녹음 시작됨');
+    } catch (e) {
+      print('❌ 녹음 시작 실패: $e');
+    }
+  }
+
+  Future<void> _stopRecording() async {
+    try {
+      final audioPath = await _audioRecorder.stop();
+      setState(() {
+        _isRecording = false;
+      });
+
+      if (audioPath != null) {
+        print('🎤 녹음 완료: $audioPath');
+        await _sendAudioMessage(audioPath);
+      }
+    } catch (e) {
+      print('❌ 녹음 중지 실패: $e');
+      setState(() {
+        _isRecording = false;
+      });
+    }
+  }
+
+  Future<void> _sendAudioMessage(String audioPath) async {
+    try {
+      // 오디오 파일을 base64로 변환
+      final file = File(audioPath);
+      final bytes = await file.readAsBytes();
+      final base64Audio = base64Encode(bytes);
+      
+      // 사용자 메시지에 "음성 메시지" 표시 추가
+      setState(() {
+        _messages.add({
+          'type': 'user',
+          'text': '🎤 음성 메시지',
+          'timestamp': DateTime.now(),
+        });
+      });
+
+      _scrollToBottom();
+
+      // WebSocket으로 오디오 데이터 전송
+      final photoContext = {
+        'photo_id': widget.photoId,
+        'photo_url': widget.photoUrl,
+        'description': _currentPhoto?.description ?? '',
+      };
+
+      _webSocketService.sendAudioMessage(
+        userId: _userId,
+        audioBase64: base64Audio,
+        photoContext: photoContext,
+        jwtToken: widget.jwtToken,
+      );
+
+      print('🎵 오디오 메시지 전송 완료');
+      
+      // 임시 파일 삭제
+      try {
+        await file.delete();
+      } catch (e) {
+        print('임시 파일 삭제 실패: $e');
+      }
+    } catch (e) {
+      print('❌ 오디오 메시지 전송 실패: $e');
+    }
+  }
+
   void _handleMessage(Map<String, dynamic> message) {
     print('🎯 메시지 핸들링 시작');
     print('  전체 메시지: $message');
@@ -172,6 +288,9 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
         
         // AI 응답이 들어올 때 자동 스크롤
         _scrollToBottom();
+        
+        // AI 응답을 TTS로 자동 재생
+        _audioService.speak(responseText);
       } else {
         print('⚠️ 예상과 다른 메시지 형식:');
         print('  type: ${message['type']}');
@@ -476,6 +595,26 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
                       border: OutlineInputBorder(),
                     ),
                     onSubmitted: (_) => _sendMessage(),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                // 마이크 버튼
+                GestureDetector(
+                  onTapDown: (_) => _startRecording(),
+                  onTapUp: (_) => _stopRecording(),
+                  onTapCancel: () => _stopRecording(),
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: _isRecording ? Colors.red : Colors.blue,
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Icon(
+                      _isRecording ? Icons.stop : Icons.mic,
+                      color: Colors.white,
+                      size: 24,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 10),

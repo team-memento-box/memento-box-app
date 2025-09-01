@@ -48,9 +48,10 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   image_picker: ^0.8.9              # 이미지 선택
-  # record: ^4.4.4                    # 오디오 녹음 - 임시 비활성화
+  record: ^4.4.4                    # 오디오 녹음
   permission_handler: ^12.0.1       # 권한 관리 - 최신 버전으로 업데이트
   just_audio: ^0.10.4               # 오디오 재생 - 최신 버전으로 업데이트
+  flutter_tts: ^3.8.5               # TTS (Text-to-Speech)
   shared_preferences: ^2.2.2        # 로컬 저장소
 
 dev_dependencies:

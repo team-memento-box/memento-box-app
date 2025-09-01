@@ -1,9 +1,11 @@
 
 import 'package:just_audio/just_audio.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'dart:async';
 
 class AudioService {
   final AudioPlayer _audioPlayer = AudioPlayer();
+  final FlutterTts _flutterTts = FlutterTts();
   AudioPlayer get player => _audioPlayer;
   String? _currentAsset;
 
@@ -11,8 +13,12 @@ class AudioService {
   final StreamController<bool> _playingController =
       StreamController<bool>.broadcast();
 
+  // TTS 상태 관리
+  bool _isTtsSpeaking = false;
+  bool get isTtsSpeaking => _isTtsSpeaking;
+
   // 현재 재생 여부를 확인하는 getter
-  bool get isPlaying => _audioPlayer.playerState.playing;
+  bool get isPlaying => _audioPlayer.playerState.playing || _isTtsSpeaking;
 
   // 완료 콜백
   void Function()? onCompleted;
@@ -20,6 +26,8 @@ class AudioService {
   Duration? getDuration() => _audioPlayer.duration;
 
   AudioService() {
+    _initializeTts();
+    
     _audioPlayer.playerStateStream.listen((state) {
       final isPlaying =
           state.playing && state.processingState != ProcessingState.completed;
@@ -29,6 +37,32 @@ class AudioService {
       if (state.processingState == ProcessingState.completed) {
         onCompleted?.call();
       }
+    });
+  }
+
+  void _initializeTts() async {
+    // TTS 설정
+    await _flutterTts.setLanguage("ko-KR");
+    await _flutterTts.setSpeechRate(0.8); // 말하기 속도
+    await _flutterTts.setVolume(1.0);
+    await _flutterTts.setPitch(1.0);
+
+    // TTS 콜백 설정
+    _flutterTts.setStartHandler(() {
+      _isTtsSpeaking = true;
+      _playingController.add(true);
+    });
+
+    _flutterTts.setCompletionHandler(() {
+      _isTtsSpeaking = false;
+      _playingController.add(false);
+      onCompleted?.call();
+    });
+
+    _flutterTts.setErrorHandler((msg) {
+      print('TTS Error: $msg');
+      _isTtsSpeaking = false;
+      _playingController.add(false);
     });
   }
 
@@ -85,7 +119,38 @@ class AudioService {
 
   Future<void> seek(Duration position) => _audioPlayer.seek(position);
   Future<void> replay() async => _audioPlayer.seek(Duration.zero);
-  Future<void> dispose() => _audioPlayer.dispose();
+  // TTS 메서드들
+  Future<void> speak(String text) async {
+    if (text.trim().isEmpty) return;
+    
+    try {
+      // 기존 재생 중인 오디오 일시정지
+      if (_audioPlayer.playerState.playing) {
+        await _audioPlayer.pause();
+      }
+      
+      await _flutterTts.speak(text);
+    } catch (e) {
+      print('TTS speak error: $e');
+      _isTtsSpeaking = false;
+      _playingController.add(false);
+    }
+  }
+
+  Future<void> stopTts() async {
+    await _flutterTts.stop();
+    _isTtsSpeaking = false;
+    _playingController.add(false);
+  }
+
+  Future<void> pauseTts() async {
+    await _flutterTts.pause();
+  }
+
+  Future<void> dispose() async {
+    await _flutterTts.stop();
+    await _audioPlayer.dispose();
+  }
 
   Future<void> skipForward(Duration duration) async {
     final current = _audioPlayer.position;

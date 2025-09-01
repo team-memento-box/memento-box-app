@@ -8,6 +8,7 @@ import os
 import uuid
 from datetime import datetime
 from services.dialogue_workflow import DialogueWorkflow, WorkflowInput
+from services.voice_system import VoiceSystem
 from core.auth import get_supabase_user
 from core.config import supabase_admin
 
@@ -35,6 +36,9 @@ app.include_router(photos.router, prefix="/api", tags=["photos"])
 
 # LangGraph 대화 워크플로우 초기화
 workflow = DialogueWorkflow()
+
+# 음성 시스템 초기화
+voice_system = VoiceSystem()
 
 async def create_session(user_id: str, conversation_id: str, photo_id: str = None) -> str:
     """새로운 대화 세션을 생성하고 세션 ID 반환"""
@@ -161,12 +165,56 @@ async def websocket_chat_endpoint(websocket: WebSocket, conversation_id: str):
                     }))
                     continue
             
-            # 메시지 검증
-            user_message = message_data.get("message", "").strip()
-            if not user_message:
+            # 메시지 타입에 따른 처리
+            message_type = message_data.get("type", "text")
+            user_message = ""
+            
+            if message_type == "audio":
+                # 오디오 메시지 처리 (Google STT)
+                audio_base64 = message_data.get("audio_data", "")
+                if not audio_base64:
+                    await websocket.send_text(json.dumps({
+                        "type": "error", 
+                        "message": "오디오 데이터가 비어있습니다.",
+                        "conversation_id": conversation_id
+                    }))
+                    continue
+                
+                print(f"🎤 오디오 메시지 수신: {len(audio_base64)} chars")
+                
+                # STT 처리 중 알림
+                await websocket.send_text(json.dumps({
+                    "type": "processing",
+                    "message": "음성을 텍스트로 변환하고 있습니다...",
+                    "conversation_id": conversation_id
+                }))
+                
+                # Google STT로 텍스트 변환
+                user_message = voice_system.transcribe_with_google_base64(audio_base64)
+                if not user_message:
+                    await websocket.send_text(json.dumps({
+                        "type": "error",
+                        "message": "음성을 인식할 수 없습니다. 다시 시도해주세요.",
+                        "conversation_id": conversation_id
+                    }))
+                    continue
+                
+                print(f"🎯 STT 변환 완료: '{user_message}'")
+                
+            elif message_type == "text":
+                # 텍스트 메시지 처리
+                user_message = message_data.get("message", "").strip()
+                if not user_message:
+                    await websocket.send_text(json.dumps({
+                        "type": "error",
+                        "message": "메시지가 비어있습니다.",
+                        "conversation_id": conversation_id
+                    }))
+                    continue
+            else:
                 await websocket.send_text(json.dumps({
                     "type": "error",
-                    "message": "메시지가 비어있습니다.",
+                    "message": f"지원하지 않는 메시지 타입입니다: {message_type}",
                     "conversation_id": conversation_id
                 }))
                 continue

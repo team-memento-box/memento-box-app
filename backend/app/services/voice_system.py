@@ -7,6 +7,9 @@ from dotenv import load_dotenv
 import pygame
 from fastapi import UploadFile
 import json
+import base64
+from google.cloud import speech
+from google.oauth2 import service_account
 
 from core.config import settings
 
@@ -16,15 +19,32 @@ class VoiceSystem:
     """음성 입출력 시스템"""
     
     def __init__(self):
+        # Azure Speech Service 설정
         self.speech_key    = os.getenv("AZURE_SPEECH_KEY")
         self.region = os.getenv("AZURE_SPEECH_REGION")
         
         # STT 설정
-        self.speech_config = speechsdk.SpeechConfig(subscription=self.speech_key, region=self.region)
-        self.speech_config.speech_recognition_language = "ko-KR"
+        if self.speech_key and self.region:
+            self.speech_config = speechsdk.SpeechConfig(subscription=self.speech_key, region=self.region)
+            self.speech_config.speech_recognition_language = "ko-KR"
         
         # TTS 설정
         self.tts_voice = "ko-KR-SunHiNeural"
+        
+        # Google Cloud Speech 설정
+        self.google_credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        self.google_client = None
+        if self.google_credentials_path and os.path.exists(self.google_credentials_path):
+            try:
+                credentials = service_account.Credentials.from_service_account_file(
+                    self.google_credentials_path
+                )
+                self.google_client = speech.SpeechClient(credentials=credentials)
+                print("✅ Google Speech Client 초기화 성공")
+            except Exception as e:
+                print(f"❌ Google Speech Client 초기화 실패: {e}")
+        else:
+            print("⚠️ Google Cloud 인증 설정이 없음 - 환경변수 GOOGLE_APPLICATION_CREDENTIALS 확인 필요")
         
         # 오디오 폴더
         self.audio_dir = Path("audio_files")
@@ -201,6 +221,118 @@ class VoiceSystem:
         except Exception as e:
             print(f"[ERROR][transcribe_speech_from_file] 예외 발생: {e}")
             import traceback; traceback.print_exc()
+            return ""
+    
+    def transcribe_with_google_base64(self, audio_base64: str) -> str:
+        """Google STT: base64 인코딩된 오디오를 텍스트로 변환"""
+        if not self.google_client:
+            print("❌ Google Speech Client가 초기화되지 않음")
+            return ""
+        
+        try:
+            print(f"🎤 Google STT 처리 시작: 데이터 길이 {len(audio_base64)} chars")
+            
+            # base64 디코딩
+            audio_content = base64.b64decode(audio_base64)
+            
+            # Google Speech API 요청 설정
+            audio = speech.RecognitionAudio(content=audio_content)
+            config = speech.RecognitionConfig(
+                encoding=speech.RecognitionConfig.AudioEncoding.WEBM_OPUS,  # Flutter record 기본 포맷
+                sample_rate_hertz=48000,  # 일반적인 WebM Opus 샘플레이트
+                language_code="ko-KR",
+                alternative_language_codes=["en-US"],  # 영어 대안
+                enable_automatic_punctuation=True,
+                use_enhanced=True,
+                model="latest_long",
+            )
+            
+            # STT 실행
+            response = self.google_client.recognize(config=config, audio=audio)
+            
+            if response.results:
+                # 가장 신뢰도 높은 결과 선택
+                transcript = response.results[0].alternatives[0].transcript
+                confidence = response.results[0].alternatives[0].confidence
+                
+                print(f"✅ Google STT 인식 성공: '{transcript}' (신뢰도: {confidence:.2f})")
+                
+                # 종료 명령어 감지
+                exit_commands = ['종료', '그만', '끝', '나가기', 'exit', 'quit', 'stop']
+                cleaned_text = transcript.lower().replace(' ', '').replace('.', '')
+                
+                for exit_cmd in exit_commands:
+                    if exit_cmd.lower() in cleaned_text:
+                        print(f"🚪 종료 명령어 감지: {exit_cmd}")
+                        return "종료"
+                
+                return transcript.strip()
+            else:
+                print("❌ Google STT: 인식된 텍스트가 없음")
+                return ""
+                
+        except Exception as e:
+            print(f"❌ Google STT 처리 실패: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return ""
+    
+    def transcribe_with_google_file(self, audio_file_path: str) -> str:
+        """Google STT: 파일에서 오디오를 텍스트로 변환"""
+        if not self.google_client:
+            print("❌ Google Speech Client가 초기화되지 않음")
+            return ""
+            
+        try:
+            print(f"🎤 Google STT 파일 처리: {audio_file_path}")
+            
+            # 파일 존재 확인
+            if not os.path.exists(audio_file_path):
+                print(f"❌ 파일이 존재하지 않음: {audio_file_path}")
+                return ""
+            
+            # 오디오 파일 읽기
+            with open(audio_file_path, "rb") as audio_file:
+                audio_content = audio_file.read()
+            
+            # Google Speech API 요청 설정
+            audio = speech.RecognitionAudio(content=audio_content)
+            config = speech.RecognitionConfig(
+                encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,  # WAV 파일용
+                sample_rate_hertz=16000,
+                language_code="ko-KR",
+                alternative_language_codes=["en-US"],
+                enable_automatic_punctuation=True,
+                use_enhanced=True,
+                model="latest_long",
+            )
+            
+            # STT 실행
+            response = self.google_client.recognize(config=config, audio=audio)
+            
+            if response.results:
+                transcript = response.results[0].alternatives[0].transcript
+                confidence = response.results[0].alternatives[0].confidence
+                
+                print(f"✅ Google STT 파일 인식 성공: '{transcript}' (신뢰도: {confidence:.2f})")
+                
+                # 종료 명령어 감지
+                exit_commands = ['종료', '그만', '끝', '나가기', 'exit', 'quit', 'stop']
+                cleaned_text = transcript.lower().replace(' ', '').replace('.', '')
+                
+                for exit_cmd in exit_commands:
+                    if exit_cmd.lower() in cleaned_text:
+                        return "종료"
+                
+                return transcript.strip()
+            else:
+                print("❌ Google STT 파일: 인식된 텍스트가 없음")
+                return ""
+                
+        except Exception as e:
+            print(f"❌ Google STT 파일 처리 실패: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return ""
 
     def get_access_token(self):
