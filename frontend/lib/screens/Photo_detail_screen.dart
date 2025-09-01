@@ -698,26 +698,47 @@ class _PhotoDetailScreenState extends State<PhotoDetailScreen> {
   Future<void> _startAudioAnalysis() async {
     try {
       print('🎵 오디오 분석 시작');
+      print('📋 사진 ID: ${widget.photoData['photo_id']}');
       
-      // 현재 사진의 활성 세션 조회
-      final userId = Provider.of<UserProvider>(context, listen: false).id;
-      if (userId == null) {
-        _showErrorSnackBar('사용자 정보를 찾을 수 없습니다.');
-        return;
-      }
+      Map<String, dynamic>? response;
       
-      final response = await SupabaseService.client
-          .from('sessions')
-          .select('id')
-          .eq('user_id', userId)
-          .contains('selected_photos', [widget.photoData['photo_id']])
-          .eq('status', 'completed')  // 완료된 세션만 분석 가능
-          .order('created_at', ascending: false)
-          .limit(1)
-          .maybeSingle();
-      
-      if (response == null) {
-        _showErrorSnackBar('완료된 세션을 찾을 수 없습니다. 먼저 대화를 완료해주세요.');
+      try {
+        // 해당 사진 ID를 포함한 세션을 직접 조회 (user_id 조건 제거)
+        print('🔍 해당 사진을 포함한 모든 세션 조회 시작...');
+        final sessionsWithPhoto = await SupabaseService.client
+            .from('sessions')
+            .select('id, user_id, selected_photos, status, created_at')
+            .contains('selected_photos', [widget.photoData['photo_id']])
+            .order('created_at', ascending: false);
+        
+        print('📊 해당 사진을 포함한 세션 수: ${sessionsWithPhoto.length}');
+        for (int i = 0; i < sessionsWithPhoto.length; i++) {
+          final session = sessionsWithPhoto[i];
+          print('세션 $i: id=${session['id']}, user_id=${session['user_id']}, status=${session['status']}, photos=${session['selected_photos']}');
+        }
+        
+        print('🔍 포함 세션 조회 완료');
+        
+        // 활성 또는 완료된 세션만 필터링
+        final validSessions = sessionsWithPhoto.where((session) => 
+          session['status'] == 'active' || session['status'] == 'completed'
+        ).toList();
+        print('📊 유효한 세션 수: ${validSessions.length}');
+        
+        if (validSessions.isEmpty) {
+          print('❌ 해당 사진의 유효한 세션이 없음');
+          _showErrorSnackBar('해당 사진의 세션을 찾을 수 없습니다.');
+          return;
+        }
+        
+        // 가장 최근 세션 선택
+        response = validSessions.first;
+        print('🔍 선택된 세션: ${response}');
+        
+      } catch (e, stackTrace) {
+        print('❌ 세션 조회 중 에러 발생: $e');
+        print('❌ 스택 트레이스: $stackTrace');
+        _showErrorSnackBar('세션 조회 중 오류가 발생했습니다: $e');
         return;
       }
       
