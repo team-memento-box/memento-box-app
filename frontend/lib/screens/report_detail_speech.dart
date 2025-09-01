@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:math';
 import '../services/dementia_analysis_service.dart';
 import '../models/report.dart';
 import '../widgets/tap_widget.dart';
@@ -56,6 +57,48 @@ class AppTextStyles {
     fontWeight: FontWeight.w500,
     height: 1.4,
   );
+}
+
+// Data Models
+class HealthAnalysisData {
+  final int totalSegments;
+  final int dementiaSegmentsCount;
+  final double dementiaRatio;
+  final int aiVoiceScore;
+  final int speechContentScore;
+  final String userName;
+  final String ageGroup;
+  final double ageGroupAverageRatio;
+
+  const HealthAnalysisData({
+    required this.totalSegments,
+    required this.dementiaSegmentsCount,
+    required this.dementiaRatio,
+    required this.aiVoiceScore,
+    required this.speechContentScore,
+    required this.userName,
+    required this.ageGroup,
+    required this.ageGroupAverageRatio,
+  });
+
+  // Computed properties
+  bool get isAboveAverage => dementiaRatio < ageGroupAverageRatio;
+
+  String get comparisonText {
+    if (isAboveAverage) {
+      return '더 좋은 결과';
+    } else {
+      return '주의가 필요함';
+    }
+  }
+
+  String get comparisonForAnalysis {
+    if (isAboveAverage) {
+      return '평균보다 낮은 위험도를 보였습니다';
+    } else {
+      return '평균보다 높은 위험도를 보였습니다';
+    }
+  }
 }
 
 // Main Screen
@@ -985,4 +1028,370 @@ class _ChartLabel extends StatelessWidget {
       ),
     );
   }
+}
+
+// Speech Analysis Card Component with Radar Chart
+class _SpeechAnalysisCard extends StatelessWidget {
+  final double screenWidth;
+  final double screenHeight;
+  final HealthAnalysisData data;
+  final ReportTextAnalysisData? textAnalysisData;
+
+  const _SpeechAnalysisCard({
+    required this.screenWidth,
+    required this.screenHeight,
+    required this.data,
+    this.textAnalysisData,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(13),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x19000000),
+            blurRadius: 5,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Text(
+            '발화 언어 분석',
+            style: AppTextStyles.cardTitle,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '발화의 언어적인 특성을 분석해 연령대별 평균과\n통계적인 사용자의 위치를 나타냅니다.\n연령대별 평균은 절대적인 판정 기준이 아님을 유의해주세요.',
+            textAlign: TextAlign.center,
+            style: AppTextStyles.smallText,
+          ),
+          const SizedBox(height: 20),
+          Text(
+            '이번 대화 분석 결과입니다',
+            style: AppTextStyles.bodyText,
+          ),
+          const SizedBox(height: 20),
+          if (textAnalysisData != null)
+            _DataRadarChart(data: data, textAnalysisData: textAnalysisData!)
+          else
+            _LoadingOrPlaceholderChart(),
+          const SizedBox(height: 16),
+          if (textAnalysisData != null)
+            Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: '${data.ageGroup} 사용자 평균보다 ',
+                    style: const TextStyle(
+                      color: AppColors.textTertiary,
+                      fontSize: 13,
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  TextSpan(
+                    text: _getOverallComparison(),
+                    style: TextStyle(
+                      color: _isAboveAverage() ? AppColors.accentGreen : AppColors.accentRed,
+                      fontSize: 13,
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const TextSpan(
+                    text: '입니다',
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontSize: 13,
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              textAlign: TextAlign.center,
+            )
+          else
+            Text(
+              '텍스트 분석 데이터를 불러오는 중입니다...',
+              style: AppTextStyles.smallText,
+              textAlign: TextAlign.center,
+            ),
+          const SizedBox(height: 16),
+          Text(
+            textAnalysisData != null
+              ? '언어 분석에서 인지 저하 신호가 일부 관찰되었습니다.\n단기적인 현상일 수 있으므로 정기적인 체크를 권장드립니다. 필요 시 정확한 전문가 진단을 받아보세요.'
+              : '텍스트 분석 결과를 기반으로 상세한 분석을 제공합니다.',
+            textAlign: TextAlign.center,
+            style: AppTextStyles.smallText,
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _isAboveAverage() {
+    if (textAnalysisData == null) return false;
+    // 간단한 평균 비교 로직 (실제로는 더 복잡한 로직 필요)
+    return textAnalysisData!.lexicalDiversity > 0.6 && 
+           textAnalysisData!.mlu > 8.0;
+  }
+
+  String _getOverallComparison() {
+    return _isAboveAverage() ? '높은 점수' : '낮은 점수';
+  }
+}
+
+// Data-driven Radar Chart Component
+class _DataRadarChart extends StatelessWidget {
+  final HealthAnalysisData data;
+  final ReportTextAnalysisData textAnalysisData;
+
+  const _DataRadarChart({
+    required this.data,
+    required this.textAnalysisData,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 240,
+      height: 240,
+      child: CustomPaint(
+        painter: DataRadarChartPainter(
+          lexicalDiversity: textAnalysisData.lexicalDiversity,
+          mlu: textAnalysisData.mlu,
+          demonstrativeRatio: textAnalysisData.demonstrativeRatio,
+          speechRate: textAnalysisData.speechRate,
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // Labels positioned around the chart
+            Positioned(
+              top: 20,
+              child: _ChartLabel('어휘 다양성'),
+            ),
+            Positioned(
+              right: 20,
+              child: _ChartLabel('평균 발화 길이'),
+            ),
+            Positioned(
+              bottom: 20,
+              child: _ChartLabel('지시어 사용 비율'),
+            ),
+            Positioned(
+              left: 20,
+              child: _ChartLabel('발화 속도'),
+            ),
+            // Legend
+            Positioned(
+              top: 50,
+              left: 30,
+              child: Row(
+                children: [
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF62BE8A),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${data.userName}님',
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 9,
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              top: 65,
+              left: 30,
+              child: Row(
+                children: [
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: const Color(0xFF62BE8A), width: 2),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '동일 연령대 평균',
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 9,
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Loading placeholder for chart
+class _LoadingOrPlaceholderChart extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 240,
+      height: 240,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: const Color(0xFFDDDDDD), width: 2),
+      ),
+      child: const Center(
+        child: CircularProgressIndicator(
+          color: Color(0xFF62BE8A),
+        ),
+      ),
+    );
+  }
+}
+
+// Custom Painter for Data-driven Radar Chart
+class DataRadarChartPainter extends CustomPainter {
+  final double lexicalDiversity;
+  final double mlu;
+  final double demonstrativeRatio;
+  final double speechRate;
+
+  DataRadarChartPainter({
+    required this.lexicalDiversity,
+    required this.mlu,
+    required this.demonstrativeRatio,
+    required this.speechRate,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2 - 40;
+    
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = const Color(0xFFDDDDDD);
+
+    // Draw background circles
+    for (int i = 1; i <= 3; i++) {
+      canvas.drawCircle(center, radius * i / 3, paint);
+    }
+
+    // Draw axis lines
+    final axisAngles = [0, 90, 180, 270]; // degrees
+    for (final angle in axisAngles) {
+      final radian = angle * 3.14159 / 180;
+      final end = Offset(
+        center.dx + radius * cos(radian),
+        center.dy + radius * sin(radian),
+      );
+      canvas.drawLine(center, end, paint);
+    }
+
+    // Normalize values to 0-1 range for visualization
+    final normalizedValues = [
+      _normalizeValue(lexicalDiversity, 0.0, 1.0),      // Top
+      _normalizeValue(mlu, 0.0, 20.0),                  // Right  
+      _normalizeValue(demonstrativeRatio, 0.0, 1.0),    // Bottom
+      _normalizeValue(speechRate, 0.0, 5.0),            // Left
+    ];
+
+    // Draw user data polygon
+    final userPath = Path();
+    final userPaint = Paint()
+      ..color = const Color(0xFF62BE8A).withOpacity(0.3)
+      ..style = PaintingStyle.fill;
+
+    final userStrokePaint = Paint()
+      ..color = const Color(0xFF62BE8A)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+
+    for (int i = 0; i < normalizedValues.length; i++) {
+      final angle = (i * 90 - 90) * 3.14159 / 180; // Start from top, go clockwise
+      final value = normalizedValues[i];
+      final point = Offset(
+        center.dx + radius * value * cos(angle),
+        center.dy + radius * value * sin(angle),
+      );
+      
+      if (i == 0) {
+        userPath.moveTo(point.dx, point.dy);
+      } else {
+        userPath.lineTo(point.dx, point.dy);
+      }
+      
+      // Draw data points
+      canvas.drawCircle(point, 4, Paint()..color = const Color(0xFF62BE8A));
+    }
+    userPath.close();
+
+    canvas.drawPath(userPath, userPaint);
+    canvas.drawPath(userPath, userStrokePaint);
+
+    // Draw average reference (simplified - could be actual age group averages)
+    final avgValues = [0.5, 0.5, 0.5, 0.5]; // Placeholder average values
+    final avgPath = Path();
+    final avgPaint = Paint()
+      ..color = const Color(0xFF62BE8A)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+
+    for (int i = 0; i < avgValues.length; i++) {
+      final angle = (i * 90 - 90) * 3.14159 / 180;
+      final value = avgValues[i];
+      final point = Offset(
+        center.dx + radius * value * cos(angle),
+        center.dy + radius * value * sin(angle),
+      );
+      
+      if (i == 0) {
+        avgPath.moveTo(point.dx, point.dy);
+      } else {
+        avgPath.lineTo(point.dx, point.dy);
+      }
+      
+      // Draw hollow circles for average
+      canvas.drawCircle(point, 4, Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.fill);
+      canvas.drawCircle(point, 4, Paint()
+        ..color = const Color(0xFF62BE8A)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2);
+    }
+    avgPath.close();
+    canvas.drawPath(avgPath, avgPaint);
+  }
+
+  double _normalizeValue(double value, double min, double max) {
+    return ((value - min) / (max - min)).clamp(0.0, 1.0);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }

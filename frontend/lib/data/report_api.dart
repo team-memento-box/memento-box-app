@@ -227,4 +227,40 @@ class ReportApi {
       throw Exception('리포트 공유 중 오류가 발생했습니다: $e');
     }
   }
+}
+
+class ReportTextAnalysisApi {
+  /// 특정 세션의 발화 텍스트 분석 데이터 조회
+  static Future<ReportTextAnalysisData?> fetchTextAnalysisData(
+    String sessionId,
+  ) async {
+    try {
+      print('🔍 Fetching text analysis data for session: $sessionId');
+
+      final response = await SupabaseService.client
+          .from('session_text_analysis')
+          .select('''
+            id,
+            session_id,
+            user_id,
+            lexical_diversity,
+            mlu,
+            demonstrative_ratio,
+            speech_rate
+          ''')
+          .eq('session_id', sessionId)
+          .maybeSingle();
+
+      if (response == null) {
+        print('ℹ️ No text analysis data found for session: $sessionId');
+        return null;
+      }
+
+      print('✅ Text analysis data fetched successfully');
+      return ReportTextAnalysisData.fromJson(response);
+    } catch (e) {
+      print('❌ Error fetching text analysis data: $e');
+      return null; // 에러 시 null 반환
+    }
+  }
 } 

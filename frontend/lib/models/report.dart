@@ -221,3 +221,57 @@ class Report {
     return userName!.endsWith('님') ? userName! : '${userName!}님';
   }
 }
+
+class ReportTextAnalysisData {
+  final String id;
+  final String sessionId;
+  final String userId;
+
+  final double lexicalDiversity;
+  final double mlu;
+  final double demonstrativeRatio;
+  final double speechRate;
+
+  final double? avgLexicalDiversity;
+  final double? avgMlu;
+  final double? avgDemonstrativeRatio;
+  final double? avgSpeechRate;
+
+  final double? maxMlu;
+  final double? minMlu;
+  final double? maxSpeechRate;
+  final double? minSpeechRate;
+
+  ReportTextAnalysisData({
+    required this.id,
+    required this.sessionId,
+    required this.userId,
+
+    required this.lexicalDiversity,
+    required this.mlu,
+    required this.demonstrativeRatio,
+    required this.speechRate,
+
+    this.avgLexicalDiversity,
+    this.avgMlu,
+    this.avgDemonstrativeRatio,
+    this.avgSpeechRate,
+
+    this.maxMlu,
+    this.minMlu,
+    this.maxSpeechRate,
+    this.minSpeechRate,
+  });
+
+  factory ReportTextAnalysisData.fromJson(Map<String, dynamic> json) {
+    return ReportTextAnalysisData(
+      id: json['id'],
+      sessionId: json['session_id'],
+      userId: json['user_id'],
+      lexicalDiversity: json['lexical_diversity'] ?? 0.0,
+      mlu: json['mlu'] ?? 0.0,
+      demonstrativeRatio: json['demonstrative_ratio'] ?? 0.0,
+      speechRate: json['speech_rate'] ?? 0.0,
+    );
+  }
+}
