@@ -14,6 +14,7 @@ class WorkflowInput(TypedDict):
     user_id: str
     user_message: str
     photo_context: Dict[str, Any]
+    audio_url: Optional[str] = None  # 음성 파일 URL 추가
 
 class IntermediateState(TypedDict):
     """노드 간 결정에 사용되는 임시 데이터"""
@@ -462,6 +463,12 @@ class DialogueWorkflow:
                 "user_input": user_message,
                 "is_cist_item": False
             }
+            
+            # 오디오 URL이 있으면 추가
+            audio_url = state["input_data"].get("audio_url")
+            if audio_url:
+                conversation_data["user_response_audio_url"] = audio_url
+                print(f"🎤 오디오 URL 추가: {audio_url}")
             
             print(f"📝 대화 데이터: {conversation_data}")
             

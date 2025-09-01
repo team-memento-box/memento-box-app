@@ -7,6 +7,8 @@ import json
 import os
 import uuid
 from datetime import datetime
+import base64
+import tempfile
 from services.dialogue_workflow import DialogueWorkflow, WorkflowInput
 from services.voice_system import VoiceSystem
 from core.auth import get_supabase_user
@@ -201,6 +203,47 @@ async def websocket_chat_endpoint(websocket: WebSocket, conversation_id: str):
                 
                 print(f"🎯 STT 변환 완료: '{user_message}'")
                 
+                # STT 변환된 텍스트를 즉시 클라이언트에 전송
+                await websocket.send_text(json.dumps({
+                    "type": "transcribed_text",
+                    "text": user_message,
+                    "conversation_id": conversation_id
+                }, ensure_ascii=False))
+                
+                # 음성 파일을 Supabase Storage에 저장
+                audio_url = None
+                try:
+                    # family_id 조회 (family_members 테이블에서)
+                    family_response = supabase_admin.table("family_members").select("family_id").eq("user_id", user_id).limit(1).execute()
+                    family_id = family_response.data[0]["family_id"] if family_response.data else None
+                    
+                    if family_id:
+                        # 오디오 데이터 디코딩
+                        audio_bytes = base64.b64decode(audio_base64)
+                        
+                        # conversation_id 생성 (UUID)
+                        audio_conversation_id = str(uuid.uuid4())
+                        
+                        # 파일 경로 생성
+                        file_path = f"{family_id}/{user_id}/{conversation_id}/{audio_conversation_id}.wav"
+                        
+                        # Supabase Storage에 업로드
+                        storage_response = supabase_admin.storage.from_("voice").upload(
+                            file_path,
+                            audio_bytes,
+                            {"content-type": "audio/wav"}  # M4A이지만 wav로 저장
+                        )
+                        
+                        # 공개 URL 생성
+                        audio_url = supabase_admin.storage.from_("voice").get_public_url(file_path)
+                        print(f"✅ 음성 파일 저장 완료: {audio_url}")
+                    else:
+                        print("⚠️ family_id를 찾을 수 없어 음성 파일을 저장하지 않습니다")
+                        
+                except Exception as e:
+                    print(f"❌ 음성 파일 저장 실패: {e}")
+                    # 저장 실패해도 대화는 계속 진행
+                
             elif message_type == "text":
                 # 텍스트 메시지 처리
                 user_message = message_data.get("message", "").strip()
@@ -221,13 +264,17 @@ async def websocket_chat_endpoint(websocket: WebSocket, conversation_id: str):
             
             print(f"Received message: {user_message} from user: {user_id}")
             
-            # 입력 데이터 구성
+            # 입력 데이터 구성 (오디오 URL 포함)
             workflow_input = WorkflowInput(
                 conversation_id=conversation_id,
                 user_id=user_id,
                 user_message=user_message,
                 photo_context=message_data.get("photo_context", {})
             )
+            
+            # 오디오 URL이 있으면 workflow_input에 추가
+            if message_type == "audio" and audio_url:
+                workflow_input["audio_url"] = audio_url
             
             # 처리 시작 알림
             await websocket.send_text(json.dumps({

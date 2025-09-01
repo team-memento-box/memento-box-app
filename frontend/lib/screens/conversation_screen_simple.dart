@@ -275,7 +275,22 @@ class _PhotoConversationScreenState extends State<PhotoConversationScreen> {
       _isProcessing = false;
       _processingMessage = '';
       
-      if (message['type'] == 'response' && message['data'] != null) {
+      // STT 변환된 텍스트 처리
+      if (message['type'] == 'transcribed_text') {
+        final transcribedText = message['text'] ?? '';
+        print('🎤 STT 변환 텍스트 수신: $transcribedText');
+        
+        // 마지막 사용자 메시지(음성 메시지)의 텍스트를 실제 변환된 텍스트로 업데이트
+        for (int i = _messages.length - 1; i >= 0; i--) {
+          if (_messages[i]['type'] == 'user' && _messages[i]['text'] == '🎤 음성 메시지') {
+            _messages[i]['text'] = transcribedText;
+            print('✅ 음성 메시지 텍스트 업데이트 완료');
+            break;
+          }
+        }
+      }
+      // AI 응답 처리
+      else if (message['type'] == 'response' && message['data'] != null) {
         final responseText = message['data']['response_text'] ?? '응답을 받을 수 없습니다.';
         print('💬 AI 응답 텍스트: $responseText');
         
